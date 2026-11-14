@@ -185,7 +185,7 @@ PLATFORM_FLAGS=
 if [ "$PREBUILT" = release ] && [ "$(uname -m)" = x86_64 ]; then
   PLATFORM_FLAGS="--extra_execution_platforms=@platforms//host:host"
   PLATFORM_FLAGS="$PLATFORM_FLAGS --extra_toolchains=@@apple_support++apple_cc_configure_extension+local_config_apple_cc_toolchains//:cc-toolchain-darwin_x86_64-x86_64"
-  PLATFORM_FLAGS="$PLATFORM_FLAGS --features=-no_warn_duplicate_libraries"
+  PLATFORM_FLAGS="$PLATFORM_FLAGS --features=-no_warn_duplicate_libraries --host_features=-no_warn_duplicate_libraries"
 fi
 
 # iOS 27's prelink reads a pinned report of Darwin 27.2's kernelcache, which this checkout does not have: a kernel
