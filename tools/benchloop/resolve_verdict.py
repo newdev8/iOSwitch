@@ -38,8 +38,12 @@ def rounding(fmt: str, n: int, prod: list[dict]) -> str:
         return f'{fmt} {n}x: one ties-down rounding of the mean, the store rule' + (
             ' (4x: one rounding, not two 2:1 steps)' if n == 4 else ''
         )
-    if _zero(prod, 'up'):
-        return f"{fmt} {n}x: already Metal's rule"
+    for model, reading in (
+        ('up', "already Metal's rule"),
+        ('q15', 'each code read as round(c * 2^15 / 255), then one ties-down rounding of the mean'),
+    ):
+        if _zero(prod, model):
+            return f'{fmt} {n}x: {reading}'
     for pairing in ('x', 'y'):
         if n == 4 and _zero(prod, f'pair_{pairing}_down'):
             return f'{fmt} 4x: two rounded 2:1 steps, {pairing} pairs first'
@@ -52,8 +56,7 @@ def complement(fmt: str, n: int, sandwich: list[dict]) -> str:
     if not sandwich or any(r.get('status') != 'ok' or 'metal_mismatches' not in r for r in sandwich):
         return f'{fmt} {n}x: the complement route did not run ({[r["id"] for r in sandwich]})'
     if all(r['metal_mismatches'] == 0 and _exact_compare(r) for r in sandwich):
-        flip = ': twodResolveSingleRounding4x() true (raw_resolve_rule.h)' if n == 4 else ''
-        return f"{fmt} {n}x: the complement route is exact, every texel the resolve pass's{flip}"
+        return f"{fmt} {n}x: the complement route is exact, every texel the resolve pass's"
     if n == 4 and any(_zero(sandwich, f'pair_{p}_down') for p in ('x', 'y')):
         return f'{fmt} 4x: two steps, so the complement route is within one code, not exact; 4x keeps resolve.twod'
     misses = [r['metal_mismatches'] for r in sandwich]

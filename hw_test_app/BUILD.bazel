@@ -11,7 +11,7 @@ load("@rules_swift//swift:swift_test.bzl", "swift_test")
 load("//bazel/lint:defs.bzl", "lint_files")
 load("//bazel/testing:defs.bzl", "host_test")
 load("//kernel/rules:package.bzl", "ios_binary")
-load(":apps.bzl", "hwtest_app", "ios_arm64e", "reproducible_apps")
+load(":apps.bzl", "hwtest_app", "ios_arm64e", "metal_airs", "reproducible_apps")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -101,6 +101,7 @@ MEDIA = [
     "jpeg_420.jpg",
     "jpeg_422.jpg",
     "jpeg_444.jpg",
+    "jpeg_444_small.jpg",
     "png.png",
     "heic.heic",
     "heic_grid.heic",
@@ -373,6 +374,15 @@ filegroup(
     ]),
 )
 
+# tools/devicerun:hwtest_test walks every Swift file outside host_*; a worker's runfiles hold only what is listed.
+filegroup(
+    name = "swift_sources",
+    srcs = glob(
+        ["**/*.swift"],
+        exclude = ["host_*/**"],
+    ),
+)
+
 swift_interop_hint(
     name = "cpu_clock_module",
     module_name = "SwitchCPUClock",
@@ -403,7 +413,26 @@ cc_library(
     target_compatible_with = ["@platforms//os:ios"],
 )
 
+swift_interop_hint(
+    name = "ipi_probe_module",
+    module_name = "SwitchIPIProbe",
+)
+
+# cpu.ipi_pingpong's two threads waking each other across cores (cpu/test runs it on the Mac).
+cc_library(
+    name = "ipi_probe",
+    srcs = ["cpu/switch_ipi_probe.c"],
+    hdrs = ["cpu/switch_ipi_probe.h"],
+    aspect_hints = [":ipi_probe_module"],
+    copts = ["-O2"],
+    target_compatible_with = ["@platforms//os:ios"],
+)
+
 exports_files([
+    "SwitchHWTest.entitlements",
+    "SwitchHWTest27.entitlements",
+    "cpu/switch_ipi_probe.c",
+    "cpu/switch_ipi_probe.h",
     "cpu/switch_workloop_probe.c",
     "cpu/switch_workloop_probe.h",
 ])
@@ -452,6 +481,8 @@ ios_binary(
         "-lc++",
         "-framework",
         "Foundation",
+        "-framework",
+        "IOSurface",
         "-framework",
         "Metal",
     ] + select({
@@ -533,7 +564,6 @@ cc_library(
         "bench/bench_pack.cpp",
         "bench/bench_twod.cpp",
         "bench/switch_bench.cpp",
-        "//drivers/NativeMetal:bridge/NativeMetalBlend.h",
         "//drivers/TegraGM20BMetal:raw/runtime/raw_blend_color.h",
         "//drivers/TegraGM20B:TegraGM20BABI.h",
         "//drivers/TegraGM20B:TegraGM20BClockABI.h",
@@ -549,6 +579,7 @@ cc_library(
         "//drivers/TegraGM20BMetal:raw/runtime/raw_arena.cpp",
         "//drivers/TegraGM20BMetal:raw/runtime/raw_comp.cpp",
         "//drivers/TegraGM20BMetal:raw/runtime/raw_compute.cpp",
+        "//drivers/TegraGM20BMetal:raw/runtime/raw_compute_indirect.cpp",
         "//drivers/TegraGM20BMetal:raw/runtime/raw_draw_bands.cpp",
         "//drivers/TegraGM20BMetal:raw/runtime/raw_compute_loops.cpp",
         "//drivers/TegraGM20BMetal:raw/runtime/raw_loop_copies.cpp",
@@ -560,7 +591,6 @@ cc_library(
         "//drivers/TegraGM20BMetal:raw/runtime/raw_kernel_job.cpp",
         "//drivers/TegraGM20BMetal:raw/runtime/raw_multisample.cpp",
         "//drivers/TegraGM20BMetal:raw/runtime/raw_private_comp.cpp",
-        "//drivers/TegraGM20BMetal:raw/runtime/raw_draw_shortcuts.cpp",
         "//drivers/TegraGM20BMetal:raw/runtime/raw_resolve_twod.cpp",
         "//drivers/TegraGM20BMetal:raw/runtime/raw_pack.cpp",
         "//drivers/TegraGM20BMetal:raw/runtime/raw_record_parts.cpp",
@@ -649,6 +679,7 @@ swift_library(
         ":core",
         ":cpu_clock",
         ":gpu",
+        ":ipi_probe",
         ":sched_probe",
         ":texpeer_pattern",
         ":video",
@@ -753,9 +784,23 @@ reproducible_apps(
     twin = ":SwitchHWTest27",
 )
 
+metal_airs(
+    name = "metal_airs",
+    apps = [
+        ":SwitchHWTest17",
+        ":SwitchHWTest27",
+    ],
+)
+
 py_test(
     name = "reproducible_test",
     srcs = ["reproducible_test.py"],
-    data = [":reproducible_apps"],
-    env = {"APPS": "$(rootpaths :reproducible_apps)"},
+    data = [
+        ":metal_airs",
+        ":reproducible_apps",
+    ],
+    env = {
+        "AIRS": "$(rootpaths :metal_airs)",
+        "APPS": "$(rootpaths :reproducible_apps)",
+    },
 )
