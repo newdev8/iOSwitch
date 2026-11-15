@@ -67,6 +67,33 @@ class StateTest(unittest.TestCase):
         self.assertNotIn('compose', self.work.state())
 
 
+class SpaceTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = Path(tempfile.mkdtemp())
+        (self.dir / stages.COMPOSED).write_bytes(b'image')
+
+    def work(self, stop_after: str | None) -> stages.Stages:
+        args = SimpleNamespace(scratch=str(self.dir), stop_after=stop_after)
+        work = stages.Stages(args, SPEC, PINS, quiet)
+        work.save(compose='c', offset=1, os_used=1000, var=10)
+        return work
+
+    def test_a_run_that_stops_after_compose_counts_nothing_more(self):
+        self.assertEqual(self.work('compose').space_needed('populate'), [])
+
+    def test_populate_counts_until_pack_is_asked_for(self):
+        with (
+            mock.patch.object(stages.Stages, 'cryptexes', return_value=({}, {})),
+            mock.patch.object(stages.populate, 'cryptex_images', return_value={}),
+            mock.patch.object(stages.space, 'populate_bytes', return_value=7),
+        ):
+            self.assertEqual(self.work('populate').space_needed('populate'), [('populate', 17)])
+            self.assertEqual(self.work(None).space_needed('populate'), [('populate', 17), ('pack', 1000)])
+
+    def test_a_composed_image_keeps_the_measurements_the_pack_needs(self):
+        self.assertEqual(self.work(None).os_bytes('populate'), (1000, 10))
+
+
 class CleanTest(unittest.TestCase):
     def test_leftovers_and_partials_go_and_root_owned_ones_are_named(self) -> None:
         scratch = Path(tempfile.mkdtemp())

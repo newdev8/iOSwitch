@@ -41,6 +41,8 @@ SMALLEST_PARTITION = 16 << 30
 LEGACY_BUILD = '21H461'
 # What the boot package pins of iOS 27's translation, kept from the deltas for //:image's folder (out/pretranslated).
 KEPT = 'kept-pretranslated'
+# The stages in the order the builder runs them; --stop-after names the last one this run executes.
+STAGE_ORDER = ('compose', 'populate', 'pack')
 # What runs before this one left in the scratch directory and nothing makes any more: the translation's work under
 # sudo (root's, which only `sudo rm` removes) and the cryptexes populate rebuilt there.
 LEFTOVERS = ('delta-os', 'delta-app_cryptex', 'delta-system_cryptex', 'translations', 'pretranslated')
@@ -110,6 +112,7 @@ class Stages:
         self.args, self.spec, self.pins, self.log = args, spec, pins, log
         self.scratch = Path(args.scratch)
         self.composed, self.populated = self.scratch / COMPOSED, self.scratch / POPULATED
+        self._os: tuple[int, int] | None = None
 
     def state(self) -> dict:
         """{stage: key} of the stages whose output is still here, and the container's offset in the images."""
@@ -118,6 +121,9 @@ class Stages:
         except (OSError, ValueError):
             return {}
         found = {'offset': saved.get('offset')}
+        for name in ('os_used', 'var'):
+            if saved.get(name):
+                found[name] = saved[name]
         for stage, image in (('compose', self.composed), ('populate', self.populated)):
             if image.is_file() and saved.get(stage):
                 found[stage] = saved[stage]
@@ -146,16 +152,33 @@ class Stages:
             paths = ' '.join(f'"{p}"' for p in stuck)
             self.log(f"cleanup: {len(stuck)} leftovers of an earlier run under sudo are root's: sudo rm -rf {paths}")
 
+    def os_bytes(self, first: str) -> tuple[int, int]:
+        """Return the OS container's used bytes and its /private/var size, measured or kept from the run that composed.
+
+        An image composed by an earlier run has both numbers in its state, so the IPSW's 8 GB member can leave the
+        disk once compose has read it.
+        """
+        if self._os is None:
+            saved = self.state() if first != 'compose' else {}
+            if saved.get('os_used') and saved.get('var'):
+                self._os = (saved['os_used'], saved['var'])
+            else:
+                self._os = compose.os_measure(self.args.os_dmg, self.spec['volumes']['system']['uuid'], self.log)
+        return self._os
+
     def space_needed(self, first: str) -> list[tuple[str, int]]:
-        """Return what each stage from `first` on writes to the scratch disk, measured from its inputs."""
-        os_used, var = compose.os_measure(self.args.os_dmg, self.spec['volumes']['system']['uuid'], self.log)
-        sources, expected = self.cryptexes()
-        images = populate.cryptex_images(self.spec, self.pins, sources, expected)
+        """Return what each stage this run executes writes to the scratch disk, measured from its inputs."""
+        stop_after = getattr(self.args, 'stop_after', None)
+        stop = STAGE_ORDER.index(stop_after) + 1 if stop_after else len(STAGE_ORDER)
+        os_used, var = self.os_bytes(first)
         rows = [('compose', os_used)] if first == 'compose' else []
-        if first in ('compose', 'populate'):
+        if first in ('compose', 'populate') and stop >= 2:
+            sources, expected = self.cryptexes()
+            images = populate.cryptex_images(self.spec, self.pins, sources, expected)
             rows.append(('populate', var + space.populate_bytes(self.args, [i for i, _ in images.values()])))
         # The parts hold every used block; punching the clone gives back what populate wrote, not composed.img's.
-        rows.append(('pack', os_used))
+        if stop >= 3:
+            rows.append(('pack', os_used))
         return rows
 
     def compose(self, key: str) -> None:
@@ -163,7 +186,8 @@ class Stages:
             image.unlink(missing_ok=True)
         with files.replacing(self.composed) as partial:
             offset, _ = compose.compose(partial, self.args.os_dmg, NOMINAL, self.spec, self.log)
-        self.save(compose=key, populate=None, offset=offset)
+        os_used, var = self.os_bytes('compose')
+        self.save(compose=key, populate=None, offset=offset, os_used=os_used, var=var)
 
     def deltas(self) -> pretranslate.Deltas | None:
         """IOS 27's deltas by role (Bazel's, install/translated.bzl), or None for an IPSW that needs none."""

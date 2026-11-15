@@ -311,10 +311,12 @@ image_inputs(
 )
 
 # What //:image reads instead when CI ships the translated cryptexes: their paths (and the kept files) come from the
-# command line, so nothing here builds, translates or seals iOS 27's large members on this Mac.
+# command line, so nothing here builds, translates or seals iOS 27's large members on this Mac. The os delta stays:
+# populate applies it to Data and Preboot, so its trust module is checked against the boot package's pins here.
 image_inputs(
     name = "image_ipsw_translated",
     inputs = {
+        "delta_os": ":delta_os",
         "os_dmg": "@ipsw//:os",
         "pretranslated_pins": ":pretranslated_pins",
         "shader_seed": ":shader_seed",

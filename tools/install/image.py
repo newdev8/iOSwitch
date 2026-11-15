@@ -92,10 +92,14 @@ def plan_lines(args: argparse.Namespace, first: str | None, name: str) -> list[s
     return [('unchanged: ' if i < start else '') + line for i, line in enumerate(steps[:stop])]
 
 
-def check_inputs(args: argparse.Namespace) -> None:
+def check_inputs(args: argparse.Namespace, first: str | None) -> None:
+    """Refuse to start when an input this run reads is missing; a stage an earlier run finished needs none of its own."""
     names = ['spec', 'ipsw', 'boot_package', 'gpu_base', 'gpu_stager', 'install_payload', 'apfs_tool']
     if not args.dry_run and not args.boot_only:
-        names += ['os_dmg', 'system_cryptex', 'app_cryptex']
+        if first == 'compose':
+            names.append('os_dmg')
+        if first in ('compose', 'populate') and getattr(args, 'stop_after', None) != 'compose':
+            names += ['system_cryptex', 'app_cryptex']
     missing = [n for n in names if not getattr(args, n) or not os.path.exists(getattr(args, n))]
     if missing:
         raise host.HostError('inputs missing: {}'.format(', '.join(missing)))
@@ -132,18 +136,19 @@ class Builder:
         self.time = Timer(log)
 
     def run(self) -> int:
-        check_inputs(self.args)
         files = stages.boot_files(self.args.boot_package)
         out = Path(self.args.out) if self.args.dry_run else folder.prepare(self.args.out)
         record = folder.records(out).get(self.name)
         if not (out / folder.SII_DIR / f'{self.name}.SII.001').is_file():
             record = None
         if self.args.boot_only:
+            check_inputs(self.args, 'head')
             return self.boot_only(out, record, files)
         inputs = stages.key_inputs(self.args, self.spec, self.pins)
         k = self.time('keys', lambda: keys.compute(inputs, files, self.label))
         work = stages.Stages(self.args, self.spec, self.pins, self.log)
         first = keys.first_stage(k, work.state(), record)
+        check_inputs(self.args, first)
         self.log(f'image: {self.label} as {self.name}.SII')
         for line in plan_lines(self.args, first, self.name):
             self.log('  plan:', line)
