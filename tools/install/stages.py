@@ -169,7 +169,10 @@ class Stages:
         """IOS 27's deltas by role (Bazel's, install/translated.bzl), or None for an IPSW that needs none."""
         dirs = {r: getattr(self.args, 'delta_' + r, None) for r in pretranslate.ORDER}
         dirs = {r: d for r, d in dirs.items() if d}
-        return pretranslate.Deltas(dirs, self.scratch / KEPT, self.log) if dirs else None
+        extra = getattr(self.args, 'translated_kept', None)
+        if not dirs and not extra:
+            return None
+        return pretranslate.Deltas(dirs, self.scratch / KEPT, self.log, extra=extra)
 
     def cryptexes(self) -> tuple[dict[str, str | Path], dict[str, str]]:
         """Return the cryptex images to stage, and the sha256 of those Bazel translated (pins describe the IPSW's)."""

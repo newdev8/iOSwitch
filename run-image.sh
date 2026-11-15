@@ -234,6 +234,25 @@ case "$SCRATCH" in
   *) SCRATCH="$PWD/$SCRATCH" ;;
 esac
 
+# iOS 27's translated cryptexes are sealed with apfs_prepare_cryptex, which macOS 15 adds; Ventura and Sonoma lack it.
+# CI builds and seals them, fetch-ios27.sh puts them in the release directory, and //:image takes them from here
+# instead of rebuilding them (install/BUILD.bazel's translated_prebuilt).
+TRANSLATED_FLAGS=
+if [ "$IOS27" = 1 ] && [ -n "$RELEASE_DIR" ] && [ -d "$RELEASE_DIR/translated/kept" ]; then
+  APP_CRYPTEX=$(find "$RELEASE_DIR/translated/app_cryptex" -maxdepth 1 -name '*.dmg' 2>/dev/null | head -1)
+  SYSTEM_CRYPTEX=$(find "$RELEASE_DIR/translated/system_cryptex" -maxdepth 1 -name '*.dmg' 2>/dev/null | head -1)
+  if [ -n "$APP_CRYPTEX" ] && [ -n "$SYSTEM_CRYPTEX" ]; then
+    TRANSLATED_FLAGS="--//install:translated_prebuilt=true"
+    set -- "$@" \
+      --app-cryptex "$APP_CRYPTEX" \
+      --system-cryptex "$SYSTEM_CRYPTEX" \
+      --translated-app-cryptex "$APP_CRYPTEX" \
+      --translated-system-cryptex "$SYSTEM_CRYPTEX" \
+      --translated-kept "$RELEASE_DIR/translated/kept"
+    echo "note: using CI's translated cryptexes in $RELEASE_DIR/translated." >&2
+  fi
+fi
+
 set -- "$@" 
 if [ -n "$OUT" ]; then set -- "$@" --out "$OUT"; fi
 if [ -n "$SCRATCH" ]; then set -- "$@" --scratch "$SCRATCH"; fi
@@ -244,7 +263,7 @@ if [ -n "$SEED_TREE" ]; then
   set -- "$@" --shader-seed "$SEED_TREE" --shader-seed-size "$SEED_SIZE"
 fi
 
-FLAGS="$CONFIG_FLAGS --//install:prebuilt=$PREBUILT $SEED_FLAGS $PLATFORM_FLAGS $KERNEL_FLAGS"
+FLAGS="$CONFIG_FLAGS --//install:prebuilt=$PREBUILT $SEED_FLAGS $PLATFORM_FLAGS $KERNEL_FLAGS $TRANSLATED_FLAGS"
 if [ -n "$RELEASE_DIR" ]; then
   FLAGS="$FLAGS --repo_env=SWITCH_RELEASE_DIR=$RELEASE_DIR"
 fi

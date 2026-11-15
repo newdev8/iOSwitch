@@ -9,7 +9,7 @@
 # The boot package comes from --//deploy:boot_package (default //:boot); the IPSW members from @ipsw (fetched by
 # range request into the repository cache; on APFS the copies Bazel makes from the cache are clones, so a member's
 # bytes are stored once).
-load("@bazel_skylib//rules:common_settings.bzl", "string_flag")
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "string_flag")
 load("@rules_python//python:py_binary.bzl", "py_binary")
 load("//bazel/lint:defs.bzl", "lint_files")
 load("//boot:overlay.bzl", "OVERLAY_BINARIES")
@@ -204,6 +204,18 @@ label_flag(
     build_setting_default = "//ipsw:pretranslated_pins",
 )
 
+# iOS 27's translated cryptexes need apfs_prepare_cryptex, which macOS 15 adds: a Mac that lacks it takes the sealed
+# cryptexes and their kept files from CI (fetch-ios27.sh's .release-ios27/translated) on //:image's command line.
+bool_flag(
+    name = "translated_prebuilt",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "translated_prebuilt_flag",
+    flag_values = {":translated_prebuilt": "true"},
+)
+
 label_flag(
     name = "shader_seed",
     build_setting_default = "//gpu/seed:tree",
@@ -298,16 +310,38 @@ image_inputs(
     tags = ["manual"],
 )
 
+# What //:image reads instead when CI ships the translated cryptexes: their paths (and the kept files) come from the
+# command line, so nothing here builds, translates or seals iOS 27's large members on this Mac.
+image_inputs(
+    name = "image_ipsw_translated",
+    inputs = {
+        "os_dmg": "@ipsw//:os",
+        "pretranslated_pins": ":pretranslated_pins",
+        "shader_seed": ":shader_seed",
+        "shader_seed_size": ":shader_seed_size",
+    },
+    tags = ["manual"],
+)
+
+alias(
+    name = "image_ipsw_selected",
+    actual = select({
+        ":translated_prebuilt_flag": ":image_ipsw_translated",
+        "//conditions:default": ":image_ipsw",
+    }),
+    tags = ["manual"],
+)
+
 py_binary(
     name = "image",
     srcs = ["//tools/install:image.py"],
     args = [
         "--inputs=$(rlocationpath :image_inputs)",
-        "--inputs=$(rlocationpath :image_ipsw)",
+        "--inputs=$(rlocationpath :image_ipsw_selected)",
     ],
     data = [
         ":image_inputs",
-        ":image_ipsw",
+        ":image_ipsw_selected",
     ],
     main = "//tools/install:image.py",
     tags = ["manual"],

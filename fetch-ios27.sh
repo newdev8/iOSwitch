@@ -117,6 +117,14 @@ else
   echo "warning: no ios27-seed artifact; building without the seed" >&2
 fi
 
+echo "Downloading ios27-translated from $FORK run $RUN..."
+if "$GH" run download "$RUN" -R "$FORK" -n ios27-translated -D "$TMP/translated"; then
+  mkdir -p "$TMP/assets/translated"
+  cp -R "$TMP/translated/." "$TMP/assets/translated/"
+else
+  echo "warning: no ios27-translated artifact; sealing the cryptexes needs macOS 15" >&2
+fi
+
 rm -rf .release-ios27
 mv "$TMP/assets" .release-ios27
 

@@ -60,12 +60,15 @@ def _place(root: Path, e: dict, original: os.stat_result) -> Path:
 class Deltas:
     """iOS 27's deltas, made by Bazel (install/translated.bzl), and what of them the boot package keeps."""
 
-    def __init__(self, dirs: dict[str, str | Path], kept: Path, log: host.Log) -> None:
-        """`dirs`: {role: the role's delta directory}; `kept`: where keep() puts the files the boot package pins."""
+    def __init__(self, dirs: dict[str, str | Path], kept: Path, log: host.Log, extra: str | Path | None = None) -> None:
+        """`dirs`: {role: the role's delta directory}; `kept`: where keep() puts the files the boot package pins;
+        `extra`: a directory of kept files for roles whose delta was built elsewhere (a Mac without apfs_prepare_cryptex).
+        """
         unknown = set(dirs) - set(ORDER)
         if unknown:
             raise host.HostError(f'unknown pretranslate roles: {sorted(unknown)}')
         self.dirs, self.kept, self.log = {r: Path(d) for r, d in dirs.items()}, Path(kept), log
+        self.extra = Path(extra) if extra else None
 
     def __contains__(self, role: str) -> bool:
         return role in self.dirs
@@ -83,6 +86,10 @@ class Deltas:
         for role, directory in sorted(self.dirs.items()):
             for name in KEPT:
                 path = directory / name.format(role=role)
+                if path.is_file():
+                    shutil.copyfile(path, self.kept / path.name)
+        if self.extra and self.extra.is_dir():
+            for path in sorted(self.extra.iterdir()):
                 if path.is_file():
                     shutil.copyfile(path, self.kept / path.name)
 

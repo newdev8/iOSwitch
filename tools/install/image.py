@@ -57,6 +57,7 @@ INPUTS = (
     'delta_system_cryptex',
     'translated_app_cryptex',
     'translated_system_cryptex',
+    'translated_kept',
 )
 BAZEL_OUTPUTS = (
     'delta_os',
