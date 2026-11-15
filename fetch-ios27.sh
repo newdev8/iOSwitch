@@ -125,6 +125,10 @@ else
   echo "warning: no ios27-translated artifact; sealing the cryptexes needs macOS 15" >&2
 fi
 
+# The seed's tar keeps its read-only directories, which rm cannot empty.
+if [ -d .release-ios27 ]; then
+  chmod -R u+w .release-ios27 2>/dev/null || true
+fi
 rm -rf .release-ios27
 mv "$TMP/assets" .release-ios27
 
