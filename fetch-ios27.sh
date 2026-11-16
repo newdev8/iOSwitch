@@ -6,8 +6,8 @@
 #   ./.tools/bin/gh auth login
 #   ./fetch-ios27.sh [run-id]
 #
-# SWITCH_FORK=<owner>/ios-on-switch-lmao overrides the fork the default run is
-# looked up in.
+# SWITCH_FORK=<owner>/iOSwitch overrides the fork the default run is looked up
+# in.
 
 set -eu
 
@@ -26,7 +26,7 @@ FORK=${SWITCH_FORK:-}
 
 if [ -z "$FORK" ]; then
   OWNER=$("$GH" api user -q .login)
-  FORK="$OWNER/ios-on-switch-lmao"
+  FORK="$OWNER/iOSwitch"
 fi
 
 RUN=${1:-}
