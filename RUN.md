@@ -1,11 +1,12 @@
 # Running this checkout
 
-Prepared 2026-11-12. HEAD `b2bbe4d`, module version `0.1.0`.
+Prepared 2026-11-16. HEAD `7cf4957`, module version `0.1.0`.
 
 ## Quick start
 
 ```sh
 ./run-image.sh --dry-run                  # the plan, about 30 s
+./run-image.sh --ios27 --out out/sd       # iPadOS 27 from .release-ios27/ (fetch-ios27.sh)
 ./run-image.sh --out out/sd               # the image: downloads the IPSW's members, ~35 GB free
 ./run-image.sh --out out/sd --to-card disk4 --yes   # when the Switch SD card is attached
 ```
@@ -20,18 +21,22 @@ ditto --norsrc --noextattr out/sd "/Volumes/SWITCH SD"
 Then boot hekate, open **Payloads**, run `install-ios.bin`, and choose
 **More Configs -> iOS** after it finishes.
 
-On Intel, `run-image.sh` also skips the Metal shader seed (its
-`precompile`/`rawpack` tools are arm64-only) and says so. The GPU bundle is
-staged without the m2v cache; shaders compile on first use.
+On Intel, `run-image.sh` skips building the Metal shader seed (its
+`precompile`/`rawpack` tools are arm64-only) unless the release directory
+supplies one. This build embeds CI's seed from `.release-ios27/seed/tree`.
 
 ## Built
 
-`out/sd` is complete: iPadOS 17.7.11 (21H461), 8.7 GB in three parts.
+`out/sd` is complete: iPadOS 27.2 (24B119), 21.6 GiB in six parts, with the
+Metal shader seed.
 
 ```text
-switchroot/ios/IOS17.SII.001   4.0G
-switchroot/ios/IOS17.SII.002   4.0G
-switchroot/ios/IOS17.SII.003   735M
+switchroot/ios/IOS27.SII.001   4.0G
+switchroot/ios/IOS27.SII.002   4.0G
+switchroot/ios/IOS27.SII.003   4.0G
+switchroot/ios/IOS27.SII.004   4.0G
+switchroot/ios/IOS27.SII.005   4.0G
+switchroot/ios/IOS27.SII.006   1.7G
 bootloader/payloads/install-ios.bin
 bootloader/ini/ios.ini
 bootloader/res/icon_ios_hue.bmp
@@ -40,13 +45,25 @@ bootloader/res/icon_ios_hue.bmp
 SHA-256:
 
 ```text
-c18cbde12cc400ebb3c65d0ddd814a940e1d789bb1214bdf2a9d571a9424a415  IOS17.SII.001
-d78ca2b3bddf6f3114a19aa8b2394caf210484822df296e3b470f701d72bfd1a  IOS17.SII.002
-6279d05123df810cd484188476a15563c6adc118168529a7e31270c5d641bfeb  IOS17.SII.003
+dcb3d6753ab89309c9a2db97931b06b7e6ba3940d7c597dd15750f5d888e3ed6  IOS27.SII.001
+1db4be55027dc7606492a242321b2f9cfc8fb6d58fcc5572a3b512535fd9f10a  IOS27.SII.002
+9d0262e6780737653e21ffa8426bd38507ee6fb526ca0d4d4755dfdb59b07b26  IOS27.SII.003
+54df1b4617106d8c773a29f42cd0033fbe2b806c784a694963706200e5e6d1a8  IOS27.SII.004
+9e6cd95e5f62f0369e381c0e4ac6817fd6eeb24032be205f49a15be817ac5cd7  IOS27.SII.005
+39be313223591a110abac5fd915f4978dcf48e53ff31031fdbd31d3e2180f279  IOS27.SII.006
 7586db8a16a429e6bafe5a1a81d8c7c828e3a19a97a6374a4951b6d74e0ad2b9  install-ios.bin
 ```
 
-The image needs an iOS partition of **17150 MiB (16.7 GiB) or more**.
+The image needs an iOS partition of **27517 MiB (26.9 GiB) or more**.
+
+The kernel is CI's prelinked `.release-ios27/kernel.macho`; the two sealed
+cryptexes are `.release-ios27/translated/{app,system}_cryptex/*.dmg`. Packing
+was done on this Intel Mac from those inputs, so the seed and the translated
+System files are in the image rather than compiled on first boot.
+
+The previous build, iPadOS 17.7.11 (21H461), was 8.7 GB in three parts:
+`c18cbde1…`, `d78ca2b3…`, `6279d051…`. Its parts are no longer in this
+checkout.
 
 With the card attached:
 
@@ -74,8 +91,10 @@ an agent. It only writes the FAT partition and never repartitions the card.
   bypass, disk gate, and `image_to_card`.
 
 The prebuilt kernel, GPU bundle, loader, overlay and host tools come from the
-CI artifact because GitHub has no release for `0.1.0`. The artifact is from run
-`42730816090`, built from this checkout's commit.
+CI artifact because GitHub has no release for `0.1.0`. The iPadOS 17 artifacts
+are from run `42730816090`; the iPadOS 27 inputs in `.release-ios27/` are from
+run `43663856765` (assets and seed; the translated cryptexes were rebuilt and
+sealed locally because that job ran out of runner disk).
 
 ## Notes
 

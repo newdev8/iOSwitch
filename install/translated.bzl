@@ -23,14 +23,24 @@ def _pretranslated_delta_impl(ctx):
     args.add("--driver", info.driver)
     args.add("--tool", info.tool)
     args.add_all(info.apple_trustcaches, before_each = "--apple-trustcache")
-    pairs = [delta[DeltaInfo] for delta in ctx.attr.pairs]
+    pairs = []
+    pair_inputs = []
+    for dep in ctx.attr.pairs:
+        if DeltaInfo in dep:
+            pair = dep[DeltaInfo]
+            pairs.append("{}/{}.cdhash-pairs".format(pair.dir.path, pair.role))
+            pair_inputs.append(pair.dir)
+        else:
+            files = dep[DefaultInfo].files.to_list()
+            pairs.extend([f.path for f in files])
+            pair_inputs.extend(files)
     for pair in pairs:
-        args.add("--cdhash-pairs", "{}/{}.cdhash-pairs".format(pair.dir.path, pair.role))
+        args.add("--cdhash-pairs", pair)
     args.add("--out", out.path)
     ctx.actions.run(
         executable = ctx.executable._translate,
         arguments = [args],
-        inputs = [ctx.file.image, ctx.file.pins] + info.apple_trustcaches + [pair.dir for pair in pairs],
+        inputs = [ctx.file.image, ctx.file.pins] + info.apple_trustcaches + pair_inputs,
         tools = [info.driver_run, info.tool_run],
         outputs = [out],
         mnemonic = "Pretranslate",
@@ -46,7 +56,10 @@ pretranslated_delta = rule(
         "image": attr.label(mandatory = True, allow_single_file = True, doc = "the decrypted member"),
         "pins": attr.label(mandatory = True, allow_single_file = True, doc = "the IPSW's pins: the System volume's UUID"),
         "translator": attr.label(mandatory = True, providers = [PretranslatedInfo]),
-        "pairs": attr.label_list(providers = [DeltaInfo], doc = "the deltas whose cdhash pairs the dyld cache takes"),
+        "pairs": attr.label_list(
+            allow_files = [".cdhash-pairs"],
+            doc = "the deltas, or another role's checked cdhash pairs, the dyld cache takes",
+        ),
         "_translate": attr.label(default = "//tools/install:translate", executable = True, cfg = "exec"),
     },
 )

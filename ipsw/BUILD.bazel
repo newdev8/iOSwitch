@@ -5,7 +5,7 @@
 load("@rules_python//python:py_binary.bzl", "py_binary")
 load("@rules_python//python:py_library.bzl", "py_library")
 load("//bazel/lint:defs.bzl", "lint_files")
-load(":defs.bzl", "ipsw_apple_trust", "ipsw_device_tree", "ipsw_kernelcache", "ipsw_pretranslated")
+load(":defs.bzl", "ipsw_apple_trust", "ipsw_device_tree", "ipsw_kernelcache", "ipsw_pretranslated", "ipsw_pretranslated_file")
 load(":ipsw.bzl", "ipsw_kinds")
 load(":pins.bzl", "IPSWS")
 
@@ -69,6 +69,14 @@ filegroup(
     name = "pretranslated_pins",
     srcs = [":pretranslated"],
     output_group = "pins",
+)
+
+# The OS role's cdhash pairs, which the System cryptex's dyld cache takes, for sealing it without translating the OS
+# image first (CI).
+ipsw_pretranslated_file(
+    name = "os_cdhash_pairs",
+    src = ":pretranslated",
+    file = "os.cdhash-pairs",
 )
 
 py_binary(

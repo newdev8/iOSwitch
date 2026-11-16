@@ -116,6 +116,7 @@ PretranslatedPinsInfo = provider(
     fields = {
         "trust": "list of File: the trust modules of the translated binaries, os, app_cryptex, system_cryptex",
         "cache_list": "File or None: the translated dyld cache files' cdhashes (/chosen/a64x-cache-pretranslated)",
+        "files": "dict of name -> File: every checked file in ipsw/pretranslated/<kind>/",
         "pins": "File or None: {file name: sha256}, what the image composer's run must reproduce",
     },
 )
@@ -151,7 +152,12 @@ def _ipsw_pretranslated_impl(ctx):
     trust = [checked[role + ".trustcache"] for role in _PRETRANSLATE_ROLES if role + ".trustcache" in checked]
     return [
         DefaultInfo(files = depset(checked.values())),
-        PretranslatedPinsInfo(trust = trust, cache_list = checked.get(_CACHE_LIST), pins = pins_file),
+        PretranslatedPinsInfo(
+            trust = trust,
+            cache_list = checked.get(_CACHE_LIST),
+            files = checked,
+            pins = pins_file,
+        ),
         OutputGroupInfo(pins = depset([pins_file] if pins_file else [])),
     ]
 
@@ -162,5 +168,20 @@ ipsw_pretranslated = rule(
     attrs = _IPSW | {
         "srcs": attr.label_list(allow_files = True),
         "_derived": attr.label(default = "//ipsw:derived", executable = True, cfg = "exec"),
+    },
+)
+
+def _ipsw_pretranslated_file_impl(ctx):
+    checked = ctx.attr.src[PretranslatedPinsInfo].files
+    if ctx.attr.file not in checked:
+        fail("{}: no {} in ipsw/pretranslated/ (ipsw/pins.bzl)".format(ctx.label, ctx.attr.file))
+    return [DefaultInfo(files = depset([checked[ctx.attr.file]]))]
+
+ipsw_pretranslated_file = rule(
+    implementation = _ipsw_pretranslated_file_impl,
+    doc = "One checked file of the kind's pretranslate outputs, under its own name (another role's cdhash pairs).",
+    attrs = {
+        "src": attr.label(mandatory = True, providers = [PretranslatedPinsInfo]),
+        "file": attr.string(mandatory = True, doc = "its name in ipsw/pretranslated/<kind>/"),
     },
 )

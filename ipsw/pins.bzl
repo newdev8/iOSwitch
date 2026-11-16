@@ -13,8 +13,9 @@ which pins one kind's members and keeps the rest. Per kind:
             LZFSE-decompressed, its arm64 slice: //ipsw:kernelcache), quartzcore_metallib_sha256 (QuartzCore's
             default.metallib, the OS volume's or the SystemOS cryptex's grafted over it: the shader seed's gate,
             //gpu/seed:seed) and, for an arm64e IPSW, pretranslated: {file: sha256} of ipsw/pretranslated/<kind>/, the
-            trust modules and dyld cache list of //translate/arm64e/pretranslate's run over the decrypted images
-            (//ipsw:pretranslated), and kernel_virt_base, the prelinked kernel's lowest segment (its kexts sit below
+            trust modules, dyld cache list and the other roles' cdhash pairs the System cryptex's cache takes, of
+            //translate/arm64e/pretranslate's run over the decrypted images (//ipsw:pretranslated), and
+            kernel_virt_base, the prelinked kernel's lowest segment (its kexts sit below
             XNU's own __TEXT): the loader's layout refuses an image that differs (tools/package/build_native_loader.py)
             and the kernel derives the virtBase it expects from it (kernel/switch/include/switch/boot_layout.h).
             21H461's was measured on the device
@@ -147,6 +148,7 @@ IPSWS = {
             "pretranslated": {
                 "a64x-cache-pretranslated.bin": "8068def3cf36ca29757238b22b0ddc9bebf1a77d63c83bac0dff3254c5f4292d",
                 "app_cryptex.trustcache": "8c49696d35668a109494d6d3b3560013947f34f93b99b876b266127f0a7d20a7",
+                "os.cdhash-pairs": "78ec3b90ae77491fdefdf0138b8f2a612a4b1205898c66363f0ff1642f7e0ed8",
                 "os.trustcache": "6999dd97b488b0d6c28982ed3d72a91b2e70561e2ae3c93d0df13ee28f2fe2c0",
                 "system_cryptex.trustcache": "4ca4724f1ee990754b2c434c6f38d649b51aafc1b63c46fb9be784444223b63d",
             },
