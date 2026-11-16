@@ -98,8 +98,9 @@ sealed locally because that job ran out of runner disk).
 
 ## Notes
 
-- Switch **OLED only**. It needs a hekate setup and a microSD with a 32 GB or
-  larger partition for iOS. Copy the card's contents somewhere safe first.
+- Switch **OLED only**. It needs a hekate setup and a microSD of **64 GB or
+  more**: the parts are 21.6 GiB and the installer needs another 26.9 GiB free
+  for the iOS partition. Copy the card's contents somewhere safe first.
 - The installation docs mention `bazel run //:image -- --copy-to-card`, but
   this checkout's `tools/install/image.py` does not implement that flag. Use
   `//:image_to_card` through `run-image.sh --to-card`.
