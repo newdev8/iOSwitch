@@ -251,9 +251,9 @@ image_inputs(
     },
 )
 
-# iOS 27: each role's pretranslate delta and the two cryptexes rebuilt from theirs, made as the user and kept in the
-# output base (install/translated.bzl). The System cryptex's dyld cache takes the other two roles' cdhash pairs, the
-# OS's from its checked pretranslate outputs: sealing the cryptexes never needs the OS image.
+# iOS 27: each role's pretranslate delta and the two cryptexes rebuilt from theirs, made as the user on a build host
+# and kept in its cache (install/translated.bzl). The System cryptex's dyld cache takes the other two roles' cdhash
+# pairs, the OS's from its checked pretranslate outputs: sealing the cryptexes never needs the OS image.
 [pretranslated_delta(
     name = "delta_" + role,
     image = image,
