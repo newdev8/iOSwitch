@@ -22,11 +22,7 @@ jobs:
           cache: ios27-assets
           buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
           upload: true
-      - uses: actions/cache/restore@v6.1.0
-        with:
-          path: ~/Library/Caches/switch-ios-bazel/disk
-          key: bazel-disk-ios27-${{ github.sha }}
-          restore-keys: bazel-disk-ios27-
+      - uses: ./.github/actions/free-disk
       - name: Build the iOS 27 release inputs
         run: bazel build --config=ios27 --//install:prebuilt=local --//boot:composition=release //release:assets
       - name: Package the prelinked kernel
@@ -61,10 +57,6 @@ jobs:
           path: ${{ runner.temp }}/kernel/inputs/kernel/kernel.macho
           if-no-files-found: error
           retention-days: 7
-      - uses: actions/cache/save@v6.1.0
-        with:
-          path: ~/Library/Caches/switch-ios-bazel/disk
-          key: bazel-disk-ios27-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
 
   translated:
     needs: assets
@@ -77,6 +69,7 @@ jobs:
           cache: ios27-assets
           buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
           upload: true
+      - uses: ./.github/actions/free-disk
       # The build writes the OS image, the system cryptex and their deltas (about 27 GB): a disk cache restored
       # beside them is room this runner cannot spare, and the remote cache covers what it held.
       - name: Drop the restored disk cache
@@ -89,19 +82,24 @@ jobs:
             //install:translated_app_cryptex //install:translated_system_cryptex
       - name: Package the translated iOS 27 parts
         run: |
+          # clonefile when the runner's volumes allow it: a copy of the 6 GB System cryptex is room this disk
+          # does not have, the bytes are the same.
+          clone() { cp -c "$1" "$2" 2>/dev/null || cp "$1" "$2"; }
           out="$RUNNER_TEMP/translated"
           mkdir -p "$out/kept"
           for role in app_cryptex system_cryptex; do
             image="$(bazel cquery --config=ios27 --//install:prebuilt=local --output=files "//install:translated_$role" | tail -1)"
             mkdir -p "$out/$role"
-            cp "$(dirname "$image")"/* "$out/$role/"
+            for f in "$(dirname "$image")"/*; do
+              clone "$f" "$out/$role/$(basename "$f")"
+            done
             delta="$(bazel cquery --config=ios27 --//install:prebuilt=local --output=files "//install:delta_$role" | tail -1)"
             for name in "$role.trustcache" "$role.cdhash-pairs"; do
-              cp "$delta/$name" "$out/kept/"
+              clone "$delta/$name" "$out/kept/$name"
             done
           done
           delta="$(bazel cquery --config=ios27 --//install:prebuilt=local --output=files //install:delta_system_cryptex | tail -1)"
-          cp "$delta/a64x-cache-pretranslated.bin" "$out/kept/"
+          clone "$delta/a64x-cache-pretranslated.bin" "$out/kept/a64x-cache-pretranslated.bin"
           ls -lhR "$out"
       - uses: actions/upload-artifact@v7.0.2
         with:
@@ -122,11 +120,7 @@ jobs:
           cache: ios27-seed
           buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
           upload: true
-      - uses: actions/cache/restore@v6.1.0
-        with:
-          path: ~/Library/Caches/switch-ios-bazel/disk
-          key: bazel-disk-ios27-${{ github.sha }}
-          restore-keys: bazel-disk-ios27-
+      - uses: ./.github/actions/free-disk
       - name: Build the Metal shader seed
         run: bazel build --config=ios27 --//install:prebuilt=local //gpu/seed:tree
       - name: Package the seed

@@ -1,0 +1,22 @@
+name: Free disk
+description: The room the runner image does not leave for a crawl or a translated System cryptex.
+runs:
+  using: composite
+  steps:
+    - name: Remove the simulators and the Xcodes this job does not use
+      shell: bash
+      run: |
+        df -h / "$HOME" "$RUNNER_TEMP"
+        sudo rm -rf /Library/Developer/CoreSimulator/Profiles/Runtimes/*
+        sudo rm -rf /Library/Developer/CoreSimulator/Caches/*
+        rm -rf "$HOME/Library/Developer/Xcode/DerivedData"/*
+        rm -rf "$HOME/Library/Caches/Homebrew"
+        # The selected Xcode stays; the image's other versions are tens of GB the build never reads.
+        if [ -n "$DEVELOPER_DIR" ]; then
+          selected="$(cd "$DEVELOPER_DIR/../.." && pwd -P)"
+          for app in /Applications/Xcode*.app; do
+            [ -d "$app" ] || continue
+            [ "$(cd "$app" && pwd -P)" = "$selected" ] || sudo rm -rf "$app"
+          done
+        fi
+        df -h / "$HOME" "$RUNNER_TEMP"

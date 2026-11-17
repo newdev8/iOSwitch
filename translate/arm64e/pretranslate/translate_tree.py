@@ -85,7 +85,13 @@ def _im4p_payload(data: bytes) -> bytes:
 
 
 def run_tool(tool: str, *args: str) -> str:
-    return subprocess.run([tool, *args], capture_output=True, text=True, check=True).stdout
+    result = subprocess.run([tool, *args], capture_output=True, text=True)
+    if result.returncode:
+        # The tool's own words (a full disk, a refused cache file) are the failure's only record: Bazel keeps the
+        # action's stdout, and CalledProcessError's message just names the exit status.
+        sys.stderr.write(result.stderr)
+        raise subprocess.CalledProcessError(result.returncode, result.args, result.stdout, result.stderr)
+    return result.stdout
 
 
 def pretranslate_file(tool: str, src: Path, out_path: Path, report_path: Path) -> dict:
