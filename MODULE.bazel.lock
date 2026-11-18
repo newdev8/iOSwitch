@@ -265,7 +265,7 @@
   "moduleExtensions": {
     "//install:release.bzl%release": {
       "general": {
-        "bzlTransitiveDigest": "nN/BM3AACP7Scl6Z8WistyufiOFPM/THbb106/eQwf8=",
+        "bzlTransitiveDigest": "lXjROUOSiRGSh6naANxL8flUUJz88+Hx4k7xC4nqhBg=",
         "usagesDigest": "kz4Bx3yrUSQachzleMrWfwpEYNS1LXH8mdZTjqB7yg4=",
         "recordedInputs": [],
         "generatedRepoSpecs": {
