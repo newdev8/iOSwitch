@@ -119,10 +119,21 @@ EOF
   fi
 fi
 
-# The pinned Xcode is 27.2. A release build runs no Xcode tool, but the
-# repository rule still checks the selected Xcode unless this is set.
+# The pinned Xcode is 27.2. A release build normally runs no Xcode tool, but
+# the repository rule still checks the selected Xcode unless this is set. When
+# the Mac has another Xcode, its codesign re-signs installd differently from
+# CI's, so the release loader's compiled-in window no longer matches: compile
+# the loader here instead.
+LOADER_FLAGS=
 if [ "$PREBUILT" = release ]; then
   export SWITCH_ALLOW_UNPINNED_XCODE=1
+  if command -v xcodebuild >/dev/null 2>&1; then
+    XCODE_VERSION=$(xcodebuild -version 2>/dev/null | awk 'NR==1 {print $2}')
+    if [ "$XCODE_VERSION" != 27.2 ]; then
+      LOADER_FLAGS="--//boot:local_loader=true"
+      echo "note: this Mac has Xcode ${XCODE_VERSION:-unknown}; compiling the loader against its window." >&2
+    fi
+  fi
 else
   if ! command -v xcodebuild >/dev/null 2>&1; then
     echo "error: a local build needs Xcode 27.2 (27B52) and its iOS SDK" >&2
@@ -176,6 +187,19 @@ fi
 
 CONFIG_FLAGS=
 if [ "$IOS27" = 1 ]; then CONFIG_FLAGS="--config=ios27"; fi
+
+# The release's parts are release builds. A prebuilt loader made the package release before; the local-loader
+# fallback must say so explicitly.
+COMPOSITION_FLAGS=
+if [ "$PREBUILT" = release ]; then COMPOSITION_FLAGS="--//boot:composition=release"; fi
+
+# The release's @llvm is an arm64 archive; a local loader link on an Intel Mac needs x86_64 ld.lld, objcopy and
+# readelf. SWITCH_LLVM_REPO points at a directory exposing them as bin/{ld.lld,llvm-objcopy,llvm-readelf}.
+LLVM_FLAGS=
+if [ -n "${SWITCH_LLVM_REPO:-}" ]; then
+  LLVM_FLAGS="--override_repository=llvm=$SWITCH_LLVM_REPO"
+  echo "note: using the loader tools in $SWITCH_LLVM_REPO." >&2
+fi
 
 # On Intel the only registered execution platform is arm64, so Bazel would build the host zipper and the arm64e
 # translator from source (under --//install:prebuilt=release, with the no-toolchain setting, that fails analysis).
@@ -263,7 +287,8 @@ if [ -n "$SEED_TREE" ]; then
   set -- "$@" --shader-seed "$SEED_TREE" --shader-seed-size "$SEED_SIZE"
 fi
 
-FLAGS="$CONFIG_FLAGS --//install:prebuilt=$PREBUILT $SEED_FLAGS $PLATFORM_FLAGS $KERNEL_FLAGS $TRANSLATED_FLAGS"
+FLAGS="$CONFIG_FLAGS --//install:prebuilt=$PREBUILT $COMPOSITION_FLAGS $SEED_FLAGS $PLATFORM_FLAGS"
+FLAGS="$FLAGS $KERNEL_FLAGS $TRANSLATED_FLAGS $LOADER_FLAGS $LLVM_FLAGS"
 if [ -n "$RELEASE_DIR" ]; then
   FLAGS="$FLAGS --repo_env=SWITCH_RELEASE_DIR=$RELEASE_DIR"
 fi

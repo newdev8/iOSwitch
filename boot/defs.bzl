@@ -50,7 +50,9 @@ LOADER_COPTS = [
     "-fno-builtin",
     "-fno-stack-protector",
     "-fno-pic",
-    "-O2",
+    # Size, not speed: a local compile with Xcode 14's -O2 outgrew the stamps slot that Xcode 27's fits, and -Oz
+    # recovers several KiB (the loader's copy/decompress loop is not the boot's bottleneck).
+    "-Oz",
     "-Wall",
     "-Wextra",
     "-Werror",
