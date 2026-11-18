@@ -17,7 +17,10 @@ set -eu
 
 cd "$(dirname "$0")"
 TREE=${1:-.release-ios27/seed/tree}
-[ -d "$TREE" ] || { echo "error: $TREE is not a directory" >&2; exit 1; }
+[ -d "$TREE" ] || {
+    echo "error: $TREE is not a directory" >&2
+    exit 1
+}
 
 chmod -R u+w "$TREE"
 find "$TREE" -type f -exec sh -c '
@@ -50,4 +53,5 @@ with open(root + '.size.json', 'w') as out:
 os.chmod(root + '.size.json', 0o644)
 PY
 
-echo "compressed $TREE: $(du -sh "$TREE" | cut -f1) on disk"
+size=$(du -sh "$TREE" | cut -f1)
+echo "compressed $TREE: $size on disk"
