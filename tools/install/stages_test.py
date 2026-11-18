@@ -134,9 +134,9 @@ class CleanTest(unittest.TestCase):
 class MinimumTest(unittest.TestCase):
     def test_room_to_run_and_ios_floor(self):
         layout = {'container_bytes': 1 << 40, 'minimum_bytes': 9 << 30}
-        self.assertEqual(stages.minimum_bytes(layout), 16 << 30)
-        layout['minimum_bytes'] = (20 << 30) + 5
-        self.assertEqual(stages.minimum_bytes(layout), (24 << 30) + 4096)
+        self.assertEqual(stages.minimum_bytes(layout), 48 << 30)
+        layout['minimum_bytes'] = (45 << 30) + 5
+        self.assertEqual(stages.minimum_bytes(layout), (49 << 30) + 4096)
         self.assertEqual(stages.minimum_bytes({'container_bytes': 8 << 30, 'minimum_bytes': 1 << 30}), 8 << 30)
 
 

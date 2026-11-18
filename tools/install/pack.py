@@ -163,6 +163,31 @@ class Target:
     boot_files: list[tuple[str, Path]]
 
 
+def _plan(fd: int, offset: int, layout: dict) -> tuple[list[tuple[int, int, int]], list[int], bytes, int]:
+    """Return the extents below the partition minimum, the parts they split into, and the container's UUID and block."""
+    block, count, container, areas = extents.container(os.pread(fd, 4096, offset))
+    size, minimum = layout['container_bytes'], layout['minimum_bytes']
+    if block * count != size:
+        raise extents.ExtentError(f'the container is {block * count} bytes, its measure {size}')
+    data = [(a, min(b, minimum)) for a, b in extents.data_ranges(fd, offset, size, block) if a < minimum]
+    plan = extents.plan(data, areas, minimum, block)
+    sizes = manifest.split(manifest.BODY_OFFSET + sum(n for _, s, n in plan if s != manifest.ZERO))
+    return plan, sizes, container, block
+
+
+def planned_bytes(image: str | Path, offset: int, layout: dict) -> int:
+    """Return the bytes NAME.SII.* will hold for `image`: its non-zero extents below the partition minimum.
+
+    The partition minimum is a floor for where the installer may put the image, not the size of its parts; with iOS's
+    floor above the container's used blocks, charging the whole minimum over-reserves space by the floor itself.
+    """
+    fd = os.open(image, os.O_RDONLY)
+    try:
+        return sum(_plan(fd, offset, layout)[1])
+    finally:
+        os.close(fd)
+
+
 def pack(source: Source, target: Target, log: host.Log, punch: bool = True) -> manifest.Manifest:
     """Pack the container into the target's NAME.SII.*; return the Manifest."""
     directory, name, layout = Path(target.directory), target.name, source.layout
@@ -170,13 +195,8 @@ def pack(source: Source, target: Target, log: host.Log, punch: bool = True) -> m
         stale.unlink()
     fd = os.open(source.image, os.O_RDWR)
     try:
-        block, count, container, areas = extents.container(os.pread(fd, 4096, source.offset))
+        plan, sizes, container, block = _plan(fd, source.offset, layout)
         size, minimum = layout['container_bytes'], layout['minimum_bytes']
-        if block * count != size:
-            raise extents.ExtentError(f'the container is {block * count} bytes, its measure {size}')
-        data = [(a, min(b, minimum)) for a, b in extents.data_ranges(fd, source.offset, size, block) if a < minimum]
-        plan = extents.plan(data, areas, minimum, block)
-        sizes = manifest.split(manifest.BODY_OFFSET + sum(n for _, s, n in plan if s != manifest.ZERO))
         log(f'pack: {len(plan)} extents, {sum(sizes)} bytes in {len(sizes)} parts, {WORKERS} workers')
         writer = Writer(directory, name, sizes)
         try:

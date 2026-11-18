@@ -35,7 +35,7 @@ NOMINAL = 1 << 40
 BLOCK = 4096
 # A fitted container needs room for iOS to run in beyond what the image holds, and iOS a partition of this at least.
 FREE_AFTER_INSTALL = 4 << 30
-SMALLEST_PARTITION = 16 << 30
+SMALLEST_PARTITION = 48 << 30
 # iOS 17's image was composed before per-kind scratch, and the morning command names no --scratch, so 21H461 keeps the
 # unsuffixed directory. Every other build gets its own, so one kind's image never recomposes over another's.
 LEGACY_BUILD = '21H461'
@@ -280,9 +280,12 @@ class Stages:
         layout = self.measure(tool, self.populated)
         layout['minimum_bytes'] = minimum_bytes(layout)
         self.prove(tool, layout['minimum_bytes'])
-        # What populate wrote is punched out behind the parts; composed.img keeps the rest of their blocks.
+        # What populate wrote is punched out behind the parts; composed.img keeps the rest of their blocks. Measure
+        # the parts, not the partition minimum: a floor above the container's used blocks would be charged as if the
+        # image held that many.
         shared = space.allocated(self.composed) if self.composed.exists() else 0
-        space.check(self.scratch, layout['minimum_bytes'] - (space.allocated(self.populated) - shared), 'pack')
+        parts = pack.planned_bytes(self.populated, self.state()['offset'], layout)
+        space.check(self.scratch, parts - (space.allocated(self.populated) - shared), 'pack')
         # Packing punches the populated clone out as it goes: from here on a failed run must populate again.
         self.save(populate=None)
         source = pack.Source(self.populated, self.state()['offset'], layout)

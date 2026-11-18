@@ -129,7 +129,11 @@ def stage_gpu(data: Path, stager: str, gpu_base: str, log: host.Log) -> None:
 
 
 def merge_tree(source: str | Path, target: Path, owners: ownership.Owners | None, log: host.Log, what: str) -> None:
-    """Copy `source` onto `target` (directories merged, files replaced): directories 0755, files 0644, root's."""
+    """Copy `source` onto `target` (directories merged, files replaced): directories 0755, files 0644, root's.
+
+    `ditto` rather than `shutil.copyfile` keeps the file's extended attributes, so a shader seed compressed on the
+    Mac (`ditto --hfsCompression`) stays compressed on Data and in the image instead of expanding to its logical size.
+    """
     count = 0
     paths = sorted(Path(source).rglob('*'))
     with progress.step(f'{what}: copying', sum(p.stat().st_size for p in paths if not p.is_dir())):
@@ -139,7 +143,7 @@ def merge_tree(source: str | Path, target: Path, owners: ownership.Owners | None
                 destination.mkdir(exist_ok=True)
                 destination.chmod(0o755)
             else:
-                shutil.copyfile(path, destination)
+                host.run('ditto', '--rsrc', '--extattr', '--acl', str(path), str(destination))
                 destination.chmod(0o644)
                 count += 1
                 progress.advance(destination.stat().st_size)
