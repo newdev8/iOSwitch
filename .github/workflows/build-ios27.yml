@@ -22,7 +22,6 @@ jobs:
           cache: ios27-assets
           buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
           upload: true
-      - uses: ./.github/actions/free-disk
       - name: Build the iOS 27 release inputs
         run: bazel build --config=ios27 --//install:prebuilt=local --//boot:composition=release //release:assets
       - name: Package the prelinked kernel
@@ -69,7 +68,6 @@ jobs:
           cache: ios27-assets
           buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
           upload: true
-      - uses: ./.github/actions/free-disk
       # The build writes the OS image, the system cryptex and their deltas (about 27 GB): a disk cache restored
       # beside them is room this runner cannot spare, and the remote cache covers what it held.
       - name: Drop the restored disk cache
@@ -120,7 +118,6 @@ jobs:
           cache: ios27-seed
           buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
           upload: true
-      - uses: ./.github/actions/free-disk
       - name: Build the Metal shader seed
         run: bazel build --config=ios27 --//install:prebuilt=local //gpu/seed:tree
       - name: Package the seed

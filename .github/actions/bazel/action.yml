@@ -30,6 +30,9 @@ runs:
         done
         echo "::error::This runner image has no Xcode $build (bazel/host/xcode.bzl)."
         exit 1
+    # Before the caches are restored: a crawl's IPSW and a restored disk cache together outgrow the space the image
+    # leaves, and moving the other Xcodes afterwards is too late.
+    - uses: ./.github/actions/free-disk
     # Since Xcode 26 the Metal compiler is a component of its own, which the runner image may not have.
     - name: Install the Metal toolchain
       shell: bash
