@@ -34,8 +34,9 @@ STAGING = '/private/preboot/Switch-Staging/'
 NOMINAL = 1 << 40
 BLOCK = 4096
 # A fitted container needs room for iOS to run in beyond what the image holds, and iOS a partition of this at least.
+# The floor is 40 GB as cards are sold and diskutil shows them (decimal), not 40 GiB, and is 4 KiB-aligned.
 FREE_AFTER_INSTALL = 4 << 30
-SMALLEST_PARTITION = 40 << 30
+SMALLEST_PARTITION = 40_000_000_000
 # iOS 17's image was composed before per-kind scratch, and the morning command names no --scratch, so 21H461 keeps the
 # unsuffixed directory. Every other build gets its own, so one kind's image never recomposes over another's.
 LEGACY_BUILD = '21H461'
