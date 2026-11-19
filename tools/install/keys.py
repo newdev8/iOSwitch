@@ -18,7 +18,7 @@ from pathlib import Path
 
 from tools.common import hashing
 
-VERSIONS = {'compose': 1, 'populate': 2, 'pack': 3, 'head': 1}
+VERSIONS = {'compose': 1, 'populate': 3, 'pack': 3, 'head': 1}
 STAGES = ('compose', 'populate', 'pack', 'head')
 
 
