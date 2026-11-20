@@ -32,7 +32,7 @@ CARD_YES=
 NO_SEED=0
 
 usage() {
-  cat <<'EOF'
+    cat <<'EOF'
 Build the iPadOS install image for a Switch OLED, or dry-run the builder.
 
   ./run-image.sh --dry-run                 print the plan (needs release assets)
@@ -47,62 +47,112 @@ Release assets: GitHub has no release for this checkout's version. Put the CI
 artifact's files in .release/ (see fetch-assets.sh) or let Bazel fetch a real
 release if one is published. iPadOS 27 uses .release-ios27/ instead.
 EOF
-  exit "${1:-0}"
+    exit "${1:-0}"
 }
 
 while [ $# -gt 0 ]; do
-  case "$1" in
-    --dry-run) DRY_RUN=1; shift ;;
-    --ios27) IOS27=1; shift ;;
-    --local) PREBUILT=local; shift ;;
-    --release) PREBUILT=release; shift ;;
-    --release-dir) RELEASE_DIR=$2; shift 2 ;;
-    --seed-dir) SEED_DIR=$2; shift 2 ;;
-    --out) OUT=$2; shift 2 ;;
-    --scratch) SCRATCH=$2; shift 2 ;;
-    --to-card) TO_CARD=$2; shift 2 ;;
-    --yes) CARD_YES=--yes; shift ;;
-    --no-seed) NO_SEED=1; shift ;;
-    --copy-to-card)
-      echo "error: --copy-to-card is in the docs but not implemented in this checkout." >&2
-      echo "       Use --to-card <disk> [--yes] instead." >&2
-      exit 2
-      ;;
-    -h|--help) usage 0 ;;
-    --) shift; break ;;
-    -*) echo "error: unknown option: $1" >&2; usage 2 ;;
-    *) break ;;
-  esac
+    case "$1" in
+        --dry-run)
+            DRY_RUN=1
+            shift
+            ;;
+        --ios27)
+            IOS27=1
+            shift
+            ;;
+        --local)
+            PREBUILT=local
+            shift
+            ;;
+        --release)
+            PREBUILT=release
+            shift
+            ;;
+        --release-dir)
+            RELEASE_DIR=$2
+            shift 2
+            ;;
+        --seed-dir)
+            SEED_DIR=$2
+            shift 2
+            ;;
+        --out)
+            OUT=$2
+            shift 2
+            ;;
+        --scratch)
+            SCRATCH=$2
+            shift 2
+            ;;
+        --to-card)
+            TO_CARD=$2
+            shift 2
+            ;;
+        --yes)
+            CARD_YES=--yes
+            shift
+            ;;
+        --no-seed)
+            NO_SEED=1
+            shift
+            ;;
+        --copy-to-card)
+            echo "error: --copy-to-card is in the docs but not implemented in this checkout." >&2
+            echo "       Use --to-card <disk> [--yes] instead." >&2
+            exit 2
+            ;;
+        -h | --help) usage 0 ;;
+        --)
+            shift
+            break
+            ;;
+        -*)
+            echo "error: unknown option: $1" >&2
+            usage 2
+            ;;
+        *) break ;;
+    esac
 done
 
-[ -x "$BAZELISK" ] || { echo "error: $BAZELISK is missing" >&2; exit 1; }
-[ "$(uname -s)" = Darwin ] || { echo "error: the image builder runs on macOS only" >&2; exit 1; }
-[ -n "$VERSION" ] || { echo "error: cannot read the version from MODULE.bazel" >&2; exit 1; }
+[ -x "$BAZELISK" ] || {
+    echo "error: $BAZELISK is missing" >&2
+    exit 1
+}
+os=$(uname -s)
+arch=$(uname -m)
+[ "$os" = Darwin ] || {
+    echo "error: the image builder runs on macOS only" >&2
+    exit 1
+}
+[ -n "$VERSION" ] || {
+    echo "error: cannot read the version from MODULE.bazel" >&2
+    exit 1
+}
 
 if [ -z "$RELEASE_DIR" ]; then
-  if [ "$IOS27" = 1 ] && [ -f .release-ios27/SHA256SUMS ]; then
-    RELEASE_DIR="$PWD/.release-ios27"
-  elif [ -f .release/SHA256SUMS ]; then
-    RELEASE_DIR="$PWD/.release"
-  fi
+    if [ "$IOS27" = 1 ] && [ -f .release-ios27/SHA256SUMS ]; then
+        RELEASE_DIR="$PWD/.release-ios27"
+    elif [ -f .release/SHA256SUMS ]; then
+        RELEASE_DIR="$PWD/.release"
+    fi
 fi
 if [ -n "$RELEASE_DIR" ]; then
-  case "$RELEASE_DIR" in
-    /*) ;;
-    *) RELEASE_DIR="$PWD/$RELEASE_DIR" ;;
-  esac
-  if [ "$PREBUILT" = release ] && [ ! -d "$RELEASE_DIR/inputs/gpu" ]; then
-    INPUTS_TAR=$(find "$RELEASE_DIR" -maxdepth 1 -name '*image-inputs.tar' | head -1)
-    if [ -n "$INPUTS_TAR" ]; then
-      mkdir -p "$RELEASE_DIR/inputs"
-      tar -xf "$INPUTS_TAR" -C "$RELEASE_DIR/inputs"
+    case "$RELEASE_DIR" in
+        /*) ;;
+        *) RELEASE_DIR="$PWD/$RELEASE_DIR" ;;
+    esac
+    if [ "$PREBUILT" = release ] && [ ! -d "$RELEASE_DIR/inputs/gpu" ]; then
+        INPUTS_TAR=$(find "$RELEASE_DIR" -maxdepth 1 -name '*image-inputs.tar' | head -1)
+        if [ -n "$INPUTS_TAR" ]; then
+            mkdir -p "$RELEASE_DIR/inputs"
+            tar -xf "$INPUTS_TAR" -C "$RELEASE_DIR/inputs"
+        fi
     fi
-  fi
 fi
 
 if [ "$PREBUILT" = release ] && [ -z "$RELEASE_DIR" ]; then
-  if ! curl -fsI "https://github.com/$REPO/releases/download/$VERSION/SHA256SUMS" >/dev/null 2>&1; then
-    cat >&2 <<EOF
+    if ! curl -fsI "https://github.com/$REPO/releases/download/$VERSION/SHA256SUMS" >/dev/null 2>&1; then
+        cat >&2 <<EOF
 error: GitHub has no release assets for version $VERSION.
 
 The image builder needs the prebuilt kernel, GPU bundle, loader, overlay and
@@ -115,8 +165,8 @@ needs a GitHub login:
 Or download the "release-assets" artifact from
 https://github.com/$REPO/actions and unpack it into .release/ yourself.
 EOF
-    exit 2
-  fi
+        exit 2
+    fi
 fi
 
 # The pinned Xcode is 27.2. A release build normally runs no Xcode tool, but
@@ -126,63 +176,63 @@ fi
 # the loader here instead.
 LOADER_FLAGS=
 if [ "$PREBUILT" = release ]; then
-  export SWITCH_ALLOW_UNPINNED_XCODE=1
-  if command -v xcodebuild >/dev/null 2>&1; then
+    export SWITCH_ALLOW_UNPINNED_XCODE=1
+    if command -v xcodebuild >/dev/null 2>&1; then
+        XCODE_VERSION=$(xcodebuild -version 2>/dev/null | awk 'NR==1 {print $2}')
+        if [ "$XCODE_VERSION" != 27.2 ]; then
+            LOADER_FLAGS="--//boot:local_loader=true"
+            echo "note: this Mac has Xcode ${XCODE_VERSION:-unknown}; compiling the loader against its window." >&2
+        fi
+    fi
+else
+    if ! command -v xcodebuild >/dev/null 2>&1; then
+        echo "error: a local build needs Xcode 27.2 (27B52) and its iOS SDK" >&2
+        exit 1
+    fi
     XCODE_VERSION=$(xcodebuild -version 2>/dev/null | awk 'NR==1 {print $2}')
     if [ "$XCODE_VERSION" != 27.2 ]; then
-      LOADER_FLAGS="--//boot:local_loader=true"
-      echo "note: this Mac has Xcode ${XCODE_VERSION:-unknown}; compiling the loader against its window." >&2
+        echo "error: this build needs Xcode 27.2; this Mac has Xcode ${XCODE_VERSION:-unknown}." >&2
+        echo "       Use the release assets (./fetch-assets.sh) or an Apple Silicon Mac with Xcode 27.2." >&2
+        exit 1
     fi
-  fi
-else
-  if ! command -v xcodebuild >/dev/null 2>&1; then
-    echo "error: a local build needs Xcode 27.2 (27B52) and its iOS SDK" >&2
-    exit 1
-  fi
-  XCODE_VERSION=$(xcodebuild -version 2>/dev/null | awk 'NR==1 {print $2}')
-  if [ "$XCODE_VERSION" != 27.2 ]; then
-    echo "error: this build needs Xcode 27.2; this Mac has Xcode ${XCODE_VERSION:-unknown}." >&2
-    echo "       Use the release assets (./fetch-assets.sh) or an Apple Silicon Mac with Xcode 27.2." >&2
-    exit 1
-  fi
 fi
 
 free_gib() {
-  dir=$1
-  while [ ! -d "$dir" ]; do dir=$(dirname "$dir"); done
-  df -g "$dir" | awk 'NR==2 {print $4}'
+    dir=$1
+    while [ ! -d "$dir" ]; do dir=$(dirname "$dir"); done
+    df -g "$dir" | awk 'NR==2 {print $4}'
 }
 
 if [ "$DRY_RUN" = 0 ]; then
-  NEED_GB=${SWITCH_MIN_FREE_GB:-35}
-  CHECK_DIR=${OUT:-out/sd}
-  FREE=$(free_gib "$(dirname "$CHECK_DIR")")
-  if [ "$FREE" -lt "$NEED_GB" ]; then
-    echo "error: ${FREE} GiB free for ${CHECK_DIR}; the builder needs about ${NEED_GB} GiB." >&2
-    echo "       Use --out and --scratch on an external APFS disk, or free space first." >&2
-    exit 1
-  fi
-  if [ -n "$SCRATCH" ]; then
-    FREE=$(free_gib "$(dirname "$SCRATCH")")
+    NEED_GB=${SWITCH_MIN_FREE_GB:-35}
+    CHECK_DIR=${OUT:-out/sd}
+    FREE=$(free_gib "$(dirname "$CHECK_DIR")")
     if [ "$FREE" -lt "$NEED_GB" ]; then
-      echo "error: ${FREE} GiB free for ${SCRATCH}; the builder needs about ${NEED_GB} GiB." >&2
-      exit 1
+        echo "error: ${FREE} GiB free for ${CHECK_DIR}; the builder needs about ${NEED_GB} GiB." >&2
+        echo "       Use --out and --scratch on an external APFS disk, or free space first." >&2
+        exit 1
     fi
-  fi
+    if [ -n "$SCRATCH" ]; then
+        FREE=$(free_gib "$(dirname "$SCRATCH")")
+        if [ "$FREE" -lt "$NEED_GB" ]; then
+            echo "error: ${FREE} GiB free for ${SCRATCH}; the builder needs about ${NEED_GB} GiB." >&2
+            exit 1
+        fi
+    fi
 fi
 
-if [ "$PREBUILT" = release ] && [ "$(uname -m)" != arm64 ]; then
-  echo "note: this Mac is $(uname -m); the release host tools need x86_64 apfs_tool and lz4." >&2
-  echo "      ./fetch-assets.sh and ./fetch-ios27.sh put the builds from ./build-host-tools.sh there." >&2
+if [ "$PREBUILT" = release ] && [ "$arch" != arm64 ]; then
+    echo "note: this Mac is $arch; the release host tools need x86_64 apfs_tool and lz4." >&2
+    echo "      ./fetch-assets.sh and ./fetch-ios27.sh put the builds from ./build-host-tools.sh there." >&2
 fi
 
 case "$SEED_DIR" in
-  "") ;;
-  /*) ;;
-  *) SEED_DIR="$PWD/$SEED_DIR" ;;
+    "") ;;
+    /*) ;;
+    *) SEED_DIR="$PWD/$SEED_DIR" ;;
 esac
 if [ -z "$SEED_DIR" ] && [ -n "$RELEASE_DIR" ] && [ -d "$RELEASE_DIR/seed/tree" ]; then
-  SEED_DIR="$RELEASE_DIR/seed"
+    SEED_DIR="$RELEASE_DIR/seed"
 fi
 
 CONFIG_FLAGS=
@@ -197,8 +247,8 @@ if [ "$PREBUILT" = release ]; then COMPOSITION_FLAGS="--//boot:composition=relea
 # readelf. SWITCH_LLVM_REPO points at a directory exposing them as bin/{ld.lld,llvm-objcopy,llvm-readelf}.
 LLVM_FLAGS=
 if [ -n "${SWITCH_LLVM_REPO:-}" ]; then
-  LLVM_FLAGS="--override_repository=llvm=$SWITCH_LLVM_REPO"
-  echo "note: using the loader tools in $SWITCH_LLVM_REPO." >&2
+    LLVM_FLAGS="--override_repository=llvm=$SWITCH_LLVM_REPO"
+    echo "note: using the loader tools in $SWITCH_LLVM_REPO." >&2
 fi
 
 # On Intel the only registered execution platform is arm64, so Bazel would build the host zipper and the arm64e
@@ -206,56 +256,56 @@ fi
 # The host platform and its x86_64 Apple toolchain run them here instead. Xcode 14.3.1's ld predates
 # -no_warn_duplicate_libraries, which apple_support adds when the pinned xcode_config says 27.2.
 PLATFORM_FLAGS=
-if [ "$PREBUILT" = release ] && [ "$(uname -m)" = x86_64 ]; then
-  PLATFORM_FLAGS="--extra_execution_platforms=@platforms//host:host"
-  PLATFORM_FLAGS="$PLATFORM_FLAGS --extra_toolchains=@@apple_support++apple_cc_configure_extension+local_config_apple_cc_toolchains//:cc-toolchain-darwin_x86_64-x86_64"
-  PLATFORM_FLAGS="$PLATFORM_FLAGS --features=-no_warn_duplicate_libraries --host_features=-no_warn_duplicate_libraries"
+if [ "$PREBUILT" = release ] && [ "$arch" = x86_64 ]; then
+    PLATFORM_FLAGS="--extra_execution_platforms=@platforms//host:host"
+    PLATFORM_FLAGS="$PLATFORM_FLAGS --extra_toolchains=@@apple_support++apple_cc_configure_extension+local_config_apple_cc_toolchains//:cc-toolchain-darwin_x86_64-x86_64"
+    PLATFORM_FLAGS="$PLATFORM_FLAGS --features=-no_warn_duplicate_libraries --host_features=-no_warn_duplicate_libraries"
 fi
 
 # iOS 27's prelink reads a pinned report of Darwin 27.2's kernelcache, which this checkout does not have: a kernel
 # prelinked by CI (fetch-ios27.sh puts it in the release directory) takes its place.
 KERNEL_FLAGS=
 if [ "$IOS27" = 1 ] && [ -n "$RELEASE_DIR" ] && [ -f "$RELEASE_DIR/kernel.macho" ]; then
-  if ! cmp -s "$RELEASE_DIR/kernel.macho" "$RELEASE_DIR/inputs/kernel/kernel.macho"; then
-    cp "$RELEASE_DIR/kernel.macho" "$RELEASE_DIR/inputs/kernel/kernel.macho"
-    # @switch_release links the local inputs (install/release.bzl); the one fetch that predates the copy holds the
-    # artifact's own kernel.
-    "$BAZELISK" shutdown >/dev/null 2>&1 || true
-    OUTPUT_BASE=$("$BAZELISK" info output_base --lockfile_mode=off 2>/dev/null | tail -1 || true)
-    if [ -n "$OUTPUT_BASE" ]; then
-      rm -rf "$OUTPUT_BASE/external/+release+switch_release" "$OUTPUT_BASE/external/@+release+switch_release.marker"
+    if ! cmp -s "$RELEASE_DIR/kernel.macho" "$RELEASE_DIR/inputs/kernel/kernel.macho"; then
+        cp "$RELEASE_DIR/kernel.macho" "$RELEASE_DIR/inputs/kernel/kernel.macho"
+        # @switch_release links the local inputs (install/release.bzl); the one fetch that predates the copy holds the
+        # artifact's own kernel.
+        "$BAZELISK" shutdown >/dev/null 2>&1 || true
+        OUTPUT_BASE=$("$BAZELISK" info output_base --lockfile_mode=off 2>/dev/null | tail -1 || true)
+        if [ -n "$OUTPUT_BASE" ]; then
+            rm -rf "$OUTPUT_BASE/external/+release+switch_release" "$OUTPUT_BASE/external/@+release+switch_release.marker"
+        fi
     fi
-  fi
-  KERNEL_FLAGS="--//install:release_kernel=@switch_release//:kernel"
-  echo "note: using the prelinked kernel in $RELEASE_DIR/kernel.macho." >&2
+    KERNEL_FLAGS="--//install:release_kernel=@switch_release//:kernel"
+    echo "note: using the prelinked kernel in $RELEASE_DIR/kernel.macho." >&2
 fi
 
 SEED_FLAGS=
 SEED_TREE=
 SEED_SIZE=
 if [ "$NO_SEED" = 0 ] && [ -n "$SEED_DIR" ] && [ -d "$SEED_DIR/tree" ] && [ -f "$SEED_DIR/tree.size.json" ]; then
-  SEED_TREE="$SEED_DIR/tree"
-  SEED_SIZE="$SEED_DIR/tree.size.json"
-  SEED_FLAGS="--//install:shader_seed=//install:none --//install:shader_seed_size=//install:none"
-  echo "note: using the Metal shader seed in $SEED_DIR." >&2
-elif [ "$PREBUILT" = release ]; then
-  if [ "$NO_SEED" = 1 ] || [ "$(uname -m)" != arm64 ]; then
+    SEED_TREE="$SEED_DIR/tree"
+    SEED_SIZE="$SEED_DIR/tree.size.json"
     SEED_FLAGS="--//install:shader_seed=//install:none --//install:shader_seed_size=//install:none"
-    echo "warning: skipping the Metal shader seed." >&2
-    echo "         Its precompile and rawpack tools ship arm64-only; the GPU bundle is" >&2
-    echo "         staged without the m2v cache, so shaders compile on first use." >&2
-  fi
+    echo "note: using the Metal shader seed in $SEED_DIR." >&2
+elif [ "$PREBUILT" = release ]; then
+    if [ "$NO_SEED" = 1 ] || [ "$arch" != arm64 ]; then
+        SEED_FLAGS="--//install:shader_seed=//install:none --//install:shader_seed_size=//install:none"
+        echo "warning: skipping the Metal shader seed." >&2
+        echo "         Its precompile and rawpack tools ship arm64-only; the GPU bundle is" >&2
+        echo "         staged without the m2v cache, so shaders compile on first use." >&2
+    fi
 fi
 
 case "$OUT" in
-  "") ;;
-  /*) ;;
-  *) OUT="$PWD/$OUT" ;;
+    "") ;;
+    /*) ;;
+    *) OUT="$PWD/$OUT" ;;
 esac
 case "$SCRATCH" in
-  "") ;;
-  /*) ;;
-  *) SCRATCH="$PWD/$SCRATCH" ;;
+    "") ;;
+    /*) ;;
+    *) SCRATCH="$PWD/$SCRATCH" ;;
 esac
 
 # iOS 27's translated cryptexes are sealed with apfs_prepare_cryptex, which macOS 15 adds; Ventura and Sonoma lack it.
@@ -263,45 +313,49 @@ esac
 # instead of rebuilding them (install/BUILD.bazel's translated_prebuilt).
 TRANSLATED_FLAGS=
 if [ "$IOS27" = 1 ] && [ -n "$RELEASE_DIR" ] && [ -d "$RELEASE_DIR/translated/kept" ]; then
-  APP_CRYPTEX=$(find "$RELEASE_DIR/translated/app_cryptex" -maxdepth 1 -name '*.dmg' 2>/dev/null | head -1)
-  SYSTEM_CRYPTEX=$(find "$RELEASE_DIR/translated/system_cryptex" -maxdepth 1 -name '*.dmg' 2>/dev/null | head -1)
-  if [ -n "$APP_CRYPTEX" ] && [ -n "$SYSTEM_CRYPTEX" ]; then
-    TRANSLATED_FLAGS="--//install:translated_prebuilt=true"
-    set -- "$@" \
-      --app-cryptex "$APP_CRYPTEX" \
-      --system-cryptex "$SYSTEM_CRYPTEX" \
-      --translated-app-cryptex "$APP_CRYPTEX" \
-      --translated-system-cryptex "$SYSTEM_CRYPTEX" \
-      --translated-kept "$RELEASE_DIR/translated/kept"
-    echo "note: using CI's translated cryptexes in $RELEASE_DIR/translated." >&2
-  fi
+    APP_CRYPTEX=$(find "$RELEASE_DIR/translated/app_cryptex" -maxdepth 1 -name '*.dmg' 2>/dev/null | head -1)
+    SYSTEM_CRYPTEX=$(find "$RELEASE_DIR/translated/system_cryptex" -maxdepth 1 -name '*.dmg' 2>/dev/null | head -1)
+    if [ -n "$APP_CRYPTEX" ] && [ -n "$SYSTEM_CRYPTEX" ]; then
+        TRANSLATED_FLAGS="--//install:translated_prebuilt=true"
+        set -- "$@" \
+            --app-cryptex "$APP_CRYPTEX" \
+            --system-cryptex "$SYSTEM_CRYPTEX" \
+            --translated-app-cryptex "$APP_CRYPTEX" \
+            --translated-system-cryptex "$SYSTEM_CRYPTEX" \
+            --translated-kept "$RELEASE_DIR/translated/kept"
+        echo "note: using CI's translated cryptexes in $RELEASE_DIR/translated." >&2
+    fi
 fi
 
-set -- "$@" 
+set -- "$@"
 if [ -n "$OUT" ]; then set -- "$@" --out "$OUT"; fi
 if [ -n "$SCRATCH" ]; then set -- "$@" --scratch "$SCRATCH"; fi
 if [ "$PREBUILT" = release ] && [ -n "$RELEASE_DIR" ] && [ -d "$RELEASE_DIR/inputs/gpu" ]; then
-  set -- "$@" --gpu-base "$RELEASE_DIR/inputs/gpu"
+    set -- "$@" --gpu-base "$RELEASE_DIR/inputs/gpu"
 fi
 if [ -n "$SEED_TREE" ]; then
-  set -- "$@" --shader-seed "$SEED_TREE" --shader-seed-size "$SEED_SIZE"
+    set -- "$@" --shader-seed "$SEED_TREE" --shader-seed-size "$SEED_SIZE"
 fi
 
 FLAGS="$CONFIG_FLAGS --//install:prebuilt=$PREBUILT $COMPOSITION_FLAGS $SEED_FLAGS $PLATFORM_FLAGS"
 FLAGS="$FLAGS $KERNEL_FLAGS $TRANSLATED_FLAGS $LOADER_FLAGS $LLVM_FLAGS"
 if [ -n "$RELEASE_DIR" ]; then
-  FLAGS="$FLAGS --repo_env=SWITCH_RELEASE_DIR=$RELEASE_DIR"
+    FLAGS="$FLAGS --repo_env=SWITCH_RELEASE_DIR=$RELEASE_DIR"
 fi
 
 if [ "$DRY_RUN" = 1 ]; then
-  echo "+ bazelisk run $FLAGS //:image_dry_run -- $*"
-  exec "$BAZELISK" run $FLAGS //:image_dry_run -- "$@"
+    echo "+ bazelisk run $FLAGS //:image_dry_run -- $*"
+    # $FLAGS holds one flag per word, assembled for this run; word splitting is the point.
+    # shellcheck disable=SC2086
+    exec "$BAZELISK" run $FLAGS //:image_dry_run -- "$@"
 fi
 
 echo "+ bazelisk run $FLAGS //:image -- $*"
+# shellcheck disable=SC2086
 "$BAZELISK" run $FLAGS //:image -- "$@"
 
 if [ -n "$TO_CARD" ]; then
-  echo "+ bazelisk run $FLAGS //:image_to_card -- $TO_CARD $CARD_YES"
-  exec "$BAZELISK" run $FLAGS //:image_to_card -- "$TO_CARD" $CARD_YES
+    echo "+ bazelisk run $FLAGS //:image_to_card -- $TO_CARD $CARD_YES"
+    # shellcheck disable=SC2086,SC2248
+    exec "$BAZELISK" run $FLAGS //:image_to_card -- "$TO_CARD" $CARD_YES
 fi

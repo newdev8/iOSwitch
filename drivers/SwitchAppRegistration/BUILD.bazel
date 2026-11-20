@@ -1,5 +1,5 @@
-load("@rules_cc//cc:objc_library.bzl", "objc_library")
 load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
+load("@rules_cc//cc:objc_library.bzl", "objc_library")
 load("//bazel/lint:defs.bzl", "lint_files")
 load("//bazel/testing:defs.bzl", "host_test")
 load("//kernel/rules:package.bzl", "ios_binary")

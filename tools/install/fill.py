@@ -11,7 +11,19 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
-from tools.install import bootstrap, card as cards, compose, delta, disks, host, owners, populate, pretranslate, space, staged_apps
+from tools.install import (
+    bootstrap,
+    card as cards,
+    compose,
+    delta,
+    disks,
+    host,
+    owners,
+    populate,
+    pretranslate,
+    space,
+    staged_apps,
+)
 
 VAR = '/private/var'
 

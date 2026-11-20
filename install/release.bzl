@@ -70,6 +70,7 @@ def _release_impl(rctx):
     version = rctx.attr.version
     local = rctx.getenv("SWITCH_RELEASE_DIR")
     base = "file://" + local if local else "https://github.com/{}/releases/download/{}".format(REPO, version)
+
     # A local release directory holds the extracted image inputs, and the checkout may have replaced a file in them
     # since the artifact was built (run-image.sh: the kernel prelinked in CI). Link them, so the build reads the
     # directory; a remote release still takes the tars its SHA256SUMS names.

@@ -93,7 +93,10 @@ def plan_lines(args: argparse.Namespace, first: str | None, name: str) -> list[s
 
 
 def check_inputs(args: argparse.Namespace, first: str | None) -> None:
-    """Refuse to start when an input this run reads is missing; a stage an earlier run finished needs none of its own."""
+    """Refuse to start when an input this run reads is missing.
+
+    A stage an earlier run finished needs none of its own.
+    """
     names = ['spec', 'ipsw', 'boot_package', 'gpu_base', 'gpu_stager', 'install_payload', 'apfs_tool']
     if not args.dry_run and not args.boot_only:
         if first == 'compose':

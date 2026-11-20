@@ -22,7 +22,8 @@ jobs:
       # A build evaluates a module extension only when it needs one of its repositories, so a stale lockfile entry
       # otherwise fails only the job that does (@switch_release's: the release image dry run).
       - run: bazel mod deps --lockfile_mode=error
-      - run: bazel test //:format_test //:lint_test //:clang_tidy_test
+      # The default 1 MiB cap hides a failing check's own output (bazel skips the rest); the fix needs to be readable.
+      - run: bazel test --experimental_ui_max_stdouterr_bytes=16777216 //:format_test //:lint_test //:clang_tidy_test
       - run: bazel run //tools/lint:py_owners
       - if: github.event_name == 'push' && !cancelled()
         uses: ./.github/actions/bazel-save

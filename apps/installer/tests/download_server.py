@@ -5,10 +5,10 @@ BODY = b'PK\x03\x04' + bytes(range(256)) * 64
 
 
 class DownloadHandler(BaseHTTPRequestHandler):
-    def log_message(self, *_args):
+    def log_message(self, fmt: str, *args: object) -> None:
         pass
 
-    def do_GET(self):
+    def do_GET(self) -> None:
         if self.path == '/redirect':
             self.send_response(302)
             self.send_header('Location', f'http://127.0.0.1:{self.server.server_port}/ok')

@@ -170,6 +170,7 @@ def _boot_package_impl(ctx):
         fail("compiling the loader needs xcode_env and xcode_identity")
     smp = ctx.attr.smp[BuildSettingInfo].value
     composition = ctx.attr._composition[BuildSettingInfo].value
+
     # A release profile (the CI asset build) and a package composed as release both take the release overlay, boot
     # args and loader profile; only a debug profile with a local composition keeps the debug ones.
     profile = "release" if prebuilt or composition == "release" else ctx.attr._profile[BuildSettingInfo].value

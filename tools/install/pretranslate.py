@@ -61,8 +61,10 @@ class Deltas:
     """iOS 27's deltas, made by Bazel (install/translated.bzl), and what of them the boot package keeps."""
 
     def __init__(self, dirs: dict[str, str | Path], kept: Path, log: host.Log, extra: str | Path | None = None) -> None:
-        """`dirs`: {role: the role's delta directory}; `kept`: where keep() puts the files the boot package pins;
-        `extra`: a directory of kept files for roles whose delta was built elsewhere (a Mac without apfs_prepare_cryptex).
+        """`dirs`: {role: the role's delta directory}; `kept`: where keep() puts the files the boot package pins.
+
+        `extra`: a directory of kept files for roles whose delta was built elsewhere (a Mac without
+        apfs_prepare_cryptex).
         """
         unknown = set(dirs) - set(ORDER)
         if unknown:

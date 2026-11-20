@@ -53,11 +53,12 @@ draws, reads every result back and compares it with a reference computed on the 
 model, such as Core Animation's states with zero uniforms or a cubic filter. Those are compared with the same picture
 drawn on a Mac's GPU with the same IPSW's QuartzCore (`goldens/scenes_<build>.txt`), using the 8x8 block means that
 `gpu.ca.sweep` uses below, and each logs `golden_<picture>=exact|close|wrong|missing`. After a scene's picture changes,
-`bazel run --config=remote //apps/hwtest:scene_goldens` (again with `--config=ios27`) redraws them. A scene's verdict comes from the
-process's default Metal device, the raw GM20B facade, alone. `raw_paths=` lists the path each command buffer took, as
-`raw`, `m2v:<reason>:<predicate>` or `split:…`, and a scene whose own command buffer took any path but `raw` fails,
-naming it (the X1 probes and the `metal.*` tests do the same). `raw_cbs`, `m2v_cbs` and `m2v_why` are the facade's
-process-wide counters over the run, framework work included, and judge nothing. They come from `switchRawCounters` in
+`bazel run --config=remote //apps/hwtest:scene_goldens` (again with `--config=ios27`) redraws them. A scene's
+verdict comes from the process's default Metal device, the raw GM20B facade, alone. `raw_paths=` lists the path each
+command buffer took, as `raw`, `m2v:<reason>:<predicate>` or `split:…`, and a scene whose own command buffer took any
+path but `raw` fails, naming it (the X1 probes and the `metal.*` tests do the same). `raw_cbs`,
+`m2v_cbs` and `m2v_why` are the facade's process-wide counters over the run, framework work included, and
+judge nothing. They come from `switchRawCounters` in
 `RawMetalDevice.mm` and `switchRawPath` in `RawMetalCommandBuffer.mm`, which only debug builds have. A failed comparison
 names the first wrong pixel, both values, the bounding box, an 8x8 hex map of the wrong area and any streak columns, and
 saves got, want and diff PNGs under `Documents/gpu/<id>/`.
