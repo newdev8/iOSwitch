@@ -22,6 +22,12 @@ jobs:
           cache: ios27-assets
           buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
           upload: true
+      # The seed's release assets outgrow what the image leaves beside the restored cache: signing and the final
+      # compression run out of room. The remote cache covers what the disk cache held.
+      - name: Drop the restored disk cache
+        run: |
+          bazel shutdown || true
+          rm -rf ~/Library/Caches/switch-ios-bazel/disk
       - name: Build the iOS 27 release inputs
         run: bazel build --config=ios27 --//install:prebuilt=local --//boot:composition=release //release:assets
       - name: Package the prelinked kernel
