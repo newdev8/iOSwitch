@@ -22,11 +22,12 @@ jobs:
         run: bazel build --//apps/installer:render_icons=true //apps/installer:SwitchInstaller17 //apps/installer:SwitchInstaller27
       - name: Freeze the renderings
         run: |
+          IPA17=$(find bazel-out -name SwitchInstaller17.ipa | head -1)
+          IPA27=$(find bazel-out -name SwitchInstaller27.ipa | head -1)
           bazel run //apps/installer:freeze_icons -- \
             --icon apps/installer/AppIcon.icon/icon.json \
             --out apps/installer/artwork \
-            bazel-bin/apps/installer/SwitchInstaller17.ipa \
-            bazel-bin/apps/installer/SwitchInstaller27.ipa
+            "$IPA17" "$IPA27"
       - uses: actions/upload-artifact@v4
         with:
           name: icon-renders
