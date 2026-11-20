@@ -183,7 +183,9 @@ def diskutil_partitions(card: Card) -> list[Part]:
                 info.get('IORegistryEntryName', ''),
                 (info.get('DiskUUID') or '').upper(),
                 info.get('Content', ''),
-                int(info.get('TotalSize', 0)),
+                # The partition's own length, not its filesystem's: a FAT formatted at the end of a
+                # 40,000,000,000-byte entry reports 39,990,198,272 as TotalSize, which is still a valid target.
+                int(info.get('Size') or info.get('IOKitSize') or info.get('TotalSize', 0)),
                 info.get('FilesystemType') or '',
             )
         )
