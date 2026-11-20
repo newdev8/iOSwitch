@@ -69,7 +69,7 @@ def _payload_impl(ctx):
         arguments = [args],
         inputs = files.values(),
         outputs = [out, manifest, packages],
-        execution_requirements = {"requires-darwin": ""},
+        execution_requirements = {"requires-darwin": "", "no-sandbox": ""},
         mnemonic = "BootstrapPayload",
         progress_message = "Assembling and signing the rootless Sileo bootstrap",
     )
