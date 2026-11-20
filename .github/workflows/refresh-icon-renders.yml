@@ -25,6 +25,10 @@ jobs:
           bazel cquery --output=files --//apps/installer:render_icons=true //apps/installer:SwitchInstaller27 > ipa27.txt
       - name: Freeze the renderings
         run: |
+          echo "ipa17=$(cat ipa17.txt) ipa27=$(cat ipa27.txt)"
+          ls -la bazel-out/apps/installer/ 2>/dev/null | head
+          ls -la "$(dirname "$(cat ipa17.txt)")" 2>/dev/null | tail -5
+          ls -la "$(cat ipa17.txt)" "$(cat ipa27.txt)" 2>/dev/null
           bazel run //apps/installer:freeze_icons -- \
             --icon apps/installer/AppIcon.icon/icon.json \
             --out apps/installer/artwork \
