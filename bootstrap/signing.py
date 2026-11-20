@@ -3,6 +3,7 @@ import plistlib
 import shutil
 import struct
 import subprocess
+import time
 from pathlib import Path
 
 from tools.common import macho
@@ -26,12 +27,17 @@ def sign_file(path: Path, identifier: str | None = None, entitlements: Path | No
         args += ['--identifier', identifier]
     if entitlements:
         args += ['--entitlements', str(entitlements)]
-    try:
-        subprocess.run([*args, str(path)], check=True, capture_output=True)
-    except subprocess.CalledProcessError as error:
-        raise subprocess.CalledProcessError(
-            error.returncode, error.cmd, error.stdout, error.stderr
-        ) from None
+    # The runner's codesign fails once in a while with exit 1 and no words; a retry signs the same bundle.
+    for attempt in range(3):
+        try:
+            subprocess.run([*args, str(path)], check=True, capture_output=True)
+            return
+        except subprocess.CalledProcessError as error:
+            if attempt == 2:
+                raise subprocess.CalledProcessError(
+                    error.returncode, error.cmd, error.stdout, error.stderr
+                ) from None
+            time.sleep(1)
 
 
 def sign_bundle(source: Path, destination: Path, entitlements: Path) -> Path:

@@ -18,11 +18,13 @@ jobs:
           buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
           upload: false
       # render_icons keeps actool's own renderings instead of the pinned ones: the IPAs freeze() pins from.
+      # --config=ios27 matches the config //release:assets builds them with, so the pinned DTSDKBuild metadata
+      # agrees with the real build's.
       - name: Build both Installer IPAs with live icons
         run: |
-          bazel build --//apps/installer:render_icons=true //apps/installer:SwitchInstaller17 //apps/installer:SwitchInstaller27
-          bazel cquery --output=files --//apps/installer:render_icons=true //apps/installer:SwitchInstaller17 > ipa17.txt
-          bazel cquery --output=files --//apps/installer:render_icons=true //apps/installer:SwitchInstaller27 > ipa27.txt
+          bazel build --config=ios27 --//apps/installer:render_icons=true //apps/installer:SwitchInstaller17 //apps/installer:SwitchInstaller27
+          bazel cquery --config=ios27 --output=files --//apps/installer:render_icons=true //apps/installer:SwitchInstaller17 > ipa17.txt
+          bazel cquery --config=ios27 --output=files --//apps/installer:render_icons=true //apps/installer:SwitchInstaller27 > ipa27.txt
       - name: Freeze the renderings
         run: |
           python3 apps/installer/icon_renders.py \
