@@ -28,9 +28,20 @@ jobs:
       - name: Freeze the renderings
         run: |
           python3 apps/installer/icon_renders.py \
-            --icon apps/installer/AppIcon.icon/icon.json \
+            --icon apps/installer/AppIcon.icon \
             --out apps/installer/artwork \
             "$(cat ipa17.txt)" "$(cat ipa27.txt)"
+      - name: Probe the Sileo codesign outside the sandbox
+        run: |
+          set +e
+          bazel build //apps/sileo:Sileo
+          cp -R "bazel-out/darwin_arm64-fastbuild/bin/apps/sileo/Sileo/Sileo.app" /tmp/Sileo.app
+          codesign --force --sign - --timestamp=none --pagesize 4096 \
+            --preserve-metadata=entitlements,flags,runtime --generate-entitlement-der \
+            --identifier org.coolstar.SileoStore \
+            --entitlements "bazel-out/darwin_arm64-fastbuild/bin/apps/sileo/Sileo/Sileo.entitlements" \
+            /tmp/Sileo.app
+          echo "probe rc=$?"
       - uses: actions/upload-artifact@v4
         with:
           name: icon-renders
