@@ -61,6 +61,9 @@ def apply(app: Path, icon: Path, inputs: Path) -> None:
     if source_hashes(icon) != receipt['source'] or any(
         info.get(k) != v for k, v in receipt['archives'][version].items()
     ):
+        print(f'icon source matches: {source_hashes(icon) == receipt["source"]}', file=sys.stderr)
+        for key, value in receipt['archives'][version].items():
+            print(f'{key}: receipt={value!r} built={info.get(key)!r}', file=sys.stderr)
         raise ValueError('Installer icon source or toolchain changed; refresh the pinned icon renderings')
     data = (inputs / ARCHIVE).read_bytes()
     if hashlib.sha256(data).hexdigest() != receipt['sha256']:

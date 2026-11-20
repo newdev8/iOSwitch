@@ -1,3 +1,4 @@
+import sys
 import copy
 import plistlib
 import shutil
@@ -33,6 +34,10 @@ def sign_file(path: Path, identifier: str | None = None, entitlements: Path | No
             subprocess.run([*args, str(path)], check=True, capture_output=True)
             return
         except subprocess.CalledProcessError as error:
+            if error.stdout:
+                print(error.stdout.decode(errors='replace'), file=sys.stderr, end='')
+            if error.stderr:
+                print(error.stderr.decode(errors='replace'), file=sys.stderr, end='')
             if attempt == 2:
                 raise subprocess.CalledProcessError(
                     error.returncode, error.cmd, error.stdout, error.stderr
