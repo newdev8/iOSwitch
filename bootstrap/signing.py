@@ -26,7 +26,12 @@ def sign_file(path: Path, identifier: str | None = None, entitlements: Path | No
         args += ['--identifier', identifier]
     if entitlements:
         args += ['--entitlements', str(entitlements)]
-    subprocess.run([*args, str(path)], check=True, capture_output=True)
+    try:
+        subprocess.run([*args, str(path)], check=True, capture_output=True)
+    except subprocess.CalledProcessError as error:
+        raise subprocess.CalledProcessError(
+            error.returncode, error.cmd, error.stdout, error.stderr
+        ) from None
 
 
 def sign_bundle(source: Path, destination: Path, entitlements: Path) -> Path:
