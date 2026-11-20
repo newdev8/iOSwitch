@@ -1187,6 +1187,10 @@ class NativeLegacyDisplay : public IOMobileFramebufferLegacy {
     Span stFeLate = {};
     uint64_t feStamp = 0, feLast = 0, fePeriodSum = 0, fePeriodMin = UINT64_MAX, fePeriodMax = 0;
     uint32_t fePeriodN = 0, stFeFolded = 0;
+    // switch-fps=30: the vsync timer runs at half rate and flips take the even frame ends, so the compositor renders
+    // 30 frames a second instead of 60. feParity is the last frame end's parity (toggled by the frame-end filter).
+    uint32_t feParity = 0;
+    bool cap30 = false;
     static inline uint64_t fePeriodSumSeen = 0;  // fePeriodSum and fePeriodN at the last stats line: they only grow
     static inline uint32_t fePeriodNSeen = 0;
     // r6-lows (r6h): swaps validateSwap refused this window and the last refusal's reason (2: not one IOSurface in layer 0 alone,
@@ -1583,11 +1587,11 @@ private:
             return;
         }
         const uint64_t now = mach_absolute_time();
-        native_legacy_vsync_notify(this, now, mach_continuous_time(), vsyncInterval);
+        native_legacy_vsync_notify(this, now, mach_continuous_time(), cap30 ? 2 * vsyncInterval : vsyncInterval);
         native_legacy_vsync_observed(1, vsyncHz);
-        vsyncNext += vsyncInterval;
+        vsyncNext += cap30 ? 2 * vsyncInterval : vsyncInterval;
         if (vsyncNext <= now) {
-            vsyncNext = now + vsyncInterval;
+            vsyncNext = now + (cap30 ? 2 : 1) * vsyncInterval;
             native_legacy_vsync_observed(3, vsyncHz);
         }
         vsyncArmed = true;
@@ -3466,6 +3470,9 @@ public:
 
     bool startDisplay(IOService *provider)
     {
+        char fps[8] = {};
+        if (PE_parse_boot_argn("switch-fps", fps, sizeof(fps)))
+            cap30 = strcmp(fps, "30") == 0;
         if (!IOMobileFramebufferLegacy::start(provider))
             return false;
         if (primary && bootMapping)

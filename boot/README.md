@@ -70,6 +70,10 @@ Only those three spellings count. Anything else gives 1, the plain path with non
 log says `SwitchUIScale: switch-ui-scale=1.60 is not 1, 1.25 or 1.6: scale 1` (with your value), so a typo is easy
 to spot.
 
+`switch-fps=30` halves the compositor's rate: the vsync the render server paces on fires every other frame end, and
+flips take the even ends, so SpringBoard and every app render 30 frames a second instead of the panel's 60. Only the
+spelling `30` counts; anything else is the panel's own rate.
+
 Both builds' own line is `-apfs_shared_datavolume`: Apple's AppleKeyStore reads it, and its other source, the ADT's
 `/filesystems e-apfs`, would also switch apfs.kext into a mode that hasn't run here yet.
 

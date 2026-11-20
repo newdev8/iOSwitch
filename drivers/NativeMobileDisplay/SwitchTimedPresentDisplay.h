@@ -45,7 +45,9 @@ bool presentNotDue(const OriginalLegacySwapRequest *request)
 #if SWITCH_FRAME_TIMELINE
     ordinaryRequest = decision == switch_timed_present::Decision::Ordinary ? request : nullptr;
 #endif
-    if (switch_timed_present::due(decision))
+    // switch-fps=30: the next frame end is odd while feParity is even; hold to the even end, one flip per two ends.
+    const bool heldForCap = cap30 && !__atomic_load_n(&feParity, __ATOMIC_ACQUIRE);
+    if (switch_timed_present::due(decision) && !heldForCap)
         return false;
 #if (defined(DEVELOPMENT) && DEVELOPMENT) || (defined(DEBUG) && DEBUG)
     if (!timedHoldLogged && decision == switch_timed_present::Decision::Early) {

@@ -117,6 +117,7 @@ template <class Self> static bool vblankFilter(OSObject *owner, IOFilterInterrup
         const uint64_t now = mach_absolute_time();
         const uint64_t last = self->feLast;
         __atomic_store_n(&self->feStamp, now, __ATOMIC_RELEASE);
+        __atomic_store_n(&self->feParity, !__atomic_load_n(&self->feParity, __ATOMIC_RELAXED), __ATOMIC_RELEASE);
         self->feLast = now;
         if (self->stats) {
             // Only consecutive frame ends (a stopped scanout or SC7 in between is no period).
