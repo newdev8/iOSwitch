@@ -182,7 +182,7 @@ int tgm_clk_raise(char *line, unsigned int len)
 }
 
 /* idle clock: the GPCPLL's output divider, so the GPU downclocks only where that costs no performance.
- * The GPU runs at GPU_MHZ (768 MHz, Horizon's docked maximum) whenever there is any GPU work, and drops
+ * The GPU runs at GPU_MHZ (1267.2 MHz, the overclocked rate) whenever there is any GPU work, and drops
  * to 76.8 MHz (L4T's lowest B01 row, Horizon's own boost-mode GPU clock) only once it has been truly idle:
  *   * down: no submission kicked, nothing in flight and no display swap for IDLE_DROP_NS (500 ms), checked on the
  *     CPU governor's tick (SwitchPerfGovernor.cpp calls tegra_gm20b_idle_tick from XNU's perfcontrol deadline, so
