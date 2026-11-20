@@ -19,15 +19,16 @@ jobs:
           upload: false
       # render_icons keeps actool's own renderings instead of the pinned ones: the IPAs freeze() pins from.
       - name: Build both Installer IPAs with live icons
-        run: bazel build --//apps/installer:render_icons=true //apps/installer:SwitchInstaller17 //apps/installer:SwitchInstaller27
+        run: |
+          bazel build --//apps/installer:render_icons=true //apps/installer:SwitchInstaller17 //apps/installer:SwitchInstaller27
+          bazel cquery --output=files --//apps/installer:render_icons=true //apps/installer:SwitchInstaller17 > ipa17.txt
+          bazel cquery --output=files --//apps/installer:render_icons=true //apps/installer:SwitchInstaller27 > ipa27.txt
       - name: Freeze the renderings
         run: |
-          IPA17=$(find -L bazel-out -name SwitchInstaller17.ipa | head -1)
-          IPA27=$(find -L bazel-out -name SwitchInstaller27.ipa | head -1)
           bazel run //apps/installer:freeze_icons -- \
             --icon apps/installer/AppIcon.icon/icon.json \
             --out apps/installer/artwork \
-            "$IPA17" "$IPA27"
+            "$(cat ipa17.txt)" "$(cat ipa27.txt)"
       - uses: actions/upload-artifact@v4
         with:
           name: icon-renders
