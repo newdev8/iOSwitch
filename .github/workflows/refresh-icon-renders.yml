@@ -1,0 +1,35 @@
+name: Refresh Installer icon renders
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    runs-on: xcode-27
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: ./.github/actions/bazel
+        with:
+          cache: refresh-icons
+          buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
+          upload: false
+      # render_icons keeps actool's own renderings instead of the pinned ones: the IPAs freeze() pins from.
+      - name: Build both Installer IPAs with live icons
+        run: bazel build --//apps/installer:render_icons=true //apps/installer:SwitchInstaller17 //apps/installer:SwitchInstaller27
+      - name: Freeze the renderings
+        run: |
+          bazel run //apps/installer:freeze_icons -- \
+            --icon apps/installer/AppIcon.icon/icon.json \
+            --out apps/installer/artwork \
+            bazel-bin/apps/installer/SwitchInstaller17.ipa \
+            bazel-bin/apps/installer/SwitchInstaller27.ipa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: icon-renders
+          path: |
+            apps/installer/artwork/icon-renders.tar.xz
+            apps/installer/artwork/icon-renders.json

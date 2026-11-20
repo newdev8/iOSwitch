@@ -148,6 +148,11 @@ config_setting(
     "prepare_icon_export",
 ]]
 
+py_binary(
+    name = "freeze_icons",
+    srcs = ["icon_renders.py"],
+)
+
 [ios_application(
     name = "SwitchInstaller" + version,
     app_icons = glob(["AppIcon.icon/**"]),
