@@ -1,5 +1,6 @@
 """Freeze Icon Composer's device renderings; actool includes worker-specific pixels and rendition IDs."""
 
+import sys
 import argparse
 import hashlib
 import io
