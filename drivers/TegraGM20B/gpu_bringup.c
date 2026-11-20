@@ -591,7 +591,7 @@ int tgm_bringup(int stage, char *line, unsigned int len)
 		nvxnu_errors_fatal(tgm_iso.deadline ? tgm_errors_contained : NULL);
 		if (tgm_coherency_init())
 			nvxnu_log("tegra-gm20b: no coherency registry: imports are cleaned once\n");
-		tgm_idle_start(); /* 768 MHz while busy, 76.8 MHz once truly idle */
+		tgm_idle_start(); /* GPU_MHZ while busy, 76.8 MHz once truly idle */
 		tgm_scrub_open(); /* the copy engine zeroes the pool from here on (see "pool scrub") */
 	}
 	return ret;

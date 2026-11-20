@@ -22,11 +22,15 @@
  * nx-common.dtsi:548). The rail is held at that ceiling for every rate: it is also L4T's floor at any rate below 20 C
  * (gpu_scaling_cdev trip0, nx-common.dtsi:1365), and nothing here reads the GPU temperature. Voltage goes up (with
  * readback) before the clock; this hook never lowers it.
- * For GPU speedo 1673 the 20% margin admits up to 768 MHz (worst NA 665 mV); HOS also stops retail units at 768 MHz
- * (nx-common.dtsi:521-523). 13% is T210's fixed/NA ratio at 921.6 MHz for speedo 1700 (+10..13% across 768-921.6), the
- * only measured basis for less, and would admit 844.8 MHz (685 mV + 13% = 774 mV) but not 921.6 (710 mV + 13% > 800 mV). */
+ * For GPU speedo 1673 the 20% margin admits up to 768 MHz (worst NA 665 mV) under an 800 mV ceiling; HOS also stops
+ * retail units at 768 MHz (nx-common.dtsi:521-523). 13% is T210's fixed/NA ratio at 921.6 MHz for speedo 1700
+ * (+10..13% across 768-921.6), the only measured basis for less, and would admit 844.8 MHz (685 mV + 13% = 774 mV)
+ * but not 921.6 (710 mV + 13% > 800 mV).
+ * This driver overclocks instead: GPU_MHZ takes the CVB table's 1267.2 MHz row, T214's rated top, with the rail
+ * ceiling raised to 1400 mV (platform.c GPU_UV_CEIL). The worst NA voltage at 1267.2 MHz plus the same 20% margin
+ * (~1362 mV) fits it, and the MAX77812 codes for it. */
 #define FIXED_PLL_MARGIN_PCT 20
-#define GPU_MHZ 768
+#define GPU_MHZ 1267
 #define BOOT_KHZ 76800 /* gm20b_pstates[0], set by gm20b_clk_init() in M1 */
 
 static int clk_prog_khz(struct nvkm_device *device, u32 khz)

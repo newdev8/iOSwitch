@@ -291,6 +291,7 @@ constexpr Rung kRungs[] = {
     {1581, 82, 0, 1374032, -33005, 27},   // 1574.4 MHz
     {1683, 87, 0, 1448791, -34505, 27},   // 1670.4 MHz
     {1785, 92, 0, 1527196, -36015, 27},   // 1766.4 MHz
+    {1964, 102, 0, 1490873, -32155, 113}, // 1958.4 MHz
 };
 constexpr unsigned kRungCount = sizeof(kRungs) / sizeof(kRungs[0]);
 
@@ -302,11 +303,11 @@ constexpr unsigned kB01ProcessSpeedo = 1650;  // speedo-tegra210.c:52
 constexpr uint8_t kMax77812Version = 0x14, kMax77812M4Cfg = 0x32, kMax77812GlbCfg2 = 0x34;
 constexpr uint8_t kPeakCurrentMask = 0x70, kPeakCurrent7200mA = 7u << 4, kVersionEs2 = 4;
 
-// DFLL mode: the 1785 MHz CVB row (an exact multiple of the DFLL's 25.5 MHz step) and L4T's
+// DFLL mode: the 1963.5 MHz CVB row (an exact multiple of the DFLL's 25.5 MHz step) and L4T's
 // T210B01 thermal boundaries for the DFLL's floor and cap indices (dt-bindings/thermal/tegra210b01-trips.h
 // TEGRA210B01_DFLL_THERMAL_FLOOR_0 / _CAP_0 / _CAP_1; 1 C hysteresis as the DT trips).
-constexpr unsigned long kDfllRateHz = 1785000000UL;
-static_assert(kDfllRateHz <= TEGRA_DFLL_CPU_MAX_HZ, "never above Horizon's boost clock");
+constexpr unsigned long kDfllRateHz = 1963500000UL;
+static_assert(kDfllRateHz <= TEGRA_DFLL_CPU_MAX_HZ, "never above the DFLL driver's maximum");
 constexpr int kDfllFloorWarmMilliC = 20000, kDfllCap1MilliC = 64000, kDfllCap2MilliC = 84000;
 constexpr int kDfllBoundaries[] = {kDfllFloorWarmMilliC, kDfllCap1MilliC, kDfllCap2MilliC};
 

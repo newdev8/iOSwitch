@@ -762,7 +762,9 @@ extern "C" int switch_pmic_start(void)
 
     // Read-only: Horizon keeps its clock in the same RTC, and writing ours would shift it.
     constexpr unsigned rtcMode = 1;
-    constexpr unsigned emcKHz = 1600000;  // hekate's top stock MTC table, L4T's T210B01 core-DVFS "emc" ceiling
+    // The EMC rate the BPMP firmware is asked for: the DVFS table's 1866 MHz row (700 mV core). The firmware keeps
+    // it only when the DRAM's own table has it; a slower module rounds down to 1600 MHz and the boot log says so.
+    constexpr unsigned emcKHz = 1866000;
     uint8_t control = 0;
     int64_t rtcSecs = -1;
     uint64_t rtcStamp = 0;

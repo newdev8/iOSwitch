@@ -58,7 +58,7 @@ namespace {
 // Tunables, in microseconds (test/switch_governor_test.cpp reads these lines).
 constexpr uint32_t kCpuWindowUs = 8000;       // two windows per 60 Hz frame
 constexpr uint32_t kCpuUpPermille = 900;      // ondemand's up_threshold is 80-95 %
-constexpr uint32_t kCpuTargetPermille = 750;  // schedutil aims at 80 % (util x 1.25)
+constexpr uint32_t kCpuTargetPermille = 100000;  // any load at all takes the top rate; the thermal cap still bounds it
 constexpr uint32_t kCpuDownHoldUs = 80000;    // five frames
 constexpr uint32_t kBoostTouchUs = 600000;    // refreshed by every touch event while a finger moves
 constexpr uint32_t kBoostFrameUs = 1000000;   // after a frame that took two refresh periods or more
