@@ -124,6 +124,8 @@ struct SeparateZetaSliceTest: HWTest {
         return failures.isEmpty ? .pass(metrics, proof: gpu.proof) : .fail(failures.joined(separator: "; "), metrics)
     }
 
+    // One scenario walks every mip arm state; splitting it would scatter the test across helpers.
+    // swiftlint:disable:this function_body_length
     private func mipArms(_ gpu: GPU, metrics: inout Metrics, failures: inout [String]) async throws {
         let tested = MTLDepthStencilDescriptor()
         tested.depthCompareFunction = .less

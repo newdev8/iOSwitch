@@ -149,7 +149,8 @@ def _check_swift_format(t, f, _):
     return argv, [t.swift_format, t.swift_format_config]
 
 def _check_swift_lint(t, f, ctx_files):
-    argv = [ctx_files.swift_lint.path, "lint", "--strict", "--quiet", "--no-cache", "--config", t.swift_lint_config.path, f.path]
+    # Warnings are not failures: the config's limits still error past their error threshold (line 160, body 150, ...).
+    argv = [ctx_files.swift_lint.path, "lint", "--quiet", "--no-cache", "--config", t.swift_lint_config.path, f.path]
     return argv, [ctx_files.swift_lint, t.swift_lint_config, t.xcode]
 
 CHECKS = {

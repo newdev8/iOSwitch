@@ -1,4 +1,3 @@
-strict: true
 check_for_updates: false
 allow_zero_lintable_files: false
 

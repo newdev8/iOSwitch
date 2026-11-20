@@ -24,6 +24,8 @@ struct TextureViewsTest: HWTest {
             alpha: Double(code[3]) / 255)
     }
 
+    // One scenario walks every texture view state; splitting it would scatter the test across helpers.
+    // swiftlint:disable:this function_body_length
     func run(_ context: TestContext) async throws -> Outcome {
         let gpu = try GPU.make()
         let kind = RawFacade.kind(of: gpu.device)
