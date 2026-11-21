@@ -9784,11 +9784,16 @@ native_switch_watchdog_policy(proc_t p, user_addr_t scratch)
 	 * scope (FairPlayIOKit is not prelinked), so fairplayd stays off with the FairPlay daemons that start on their own:
 	 * adid (CoreADI) and lskdd. lskdd's daily XPC activity launches it, it exits (92) before completing the activity,
 	 * and launchd respawns it once a second. Jobs limited to device-tree nodes J120 has not (SepUpdateTimer and
-	 * iomfb_bics_daemon on "hilo", biometrickitd.mesa on "mesa") are refused by launchd itself, as on J120. */
+	 * iomfb_bics_daemon on "hilo", biometrickitd.mesa on "mesa") are refused by launchd itself, as on J120.
+	 * The Switch has no camera, and on 27.2 cameracaptured became the first Jetsam kill's largest process (its
+	 * capture stack starts without the hardware and holds the most memory); camerad's main thread also retries the
+	 * missing camera HAL in a tight loop, like the Bluetooth plug-in once did. */
 #define NATIVE_SWITCH_POLICY_TAIL "<key>com.apple.softwareupdateservicesd</key><true/>" \
 	    "<key>com.apple.fairplayd.A2</key><true/>" \
 	    "<key>com.apple.adid</key><true/>" \
 	    "<key>com.apple.lskdd</key><true/>" \
+	    "<key>com.apple.cameracaptured</key><true/>" \
+	    "<key>com.apple.camerad</key><true/>" \
 	    "</dict></plist>\n"
 	/* This file is the only override database 21H461 launchd reads: no disabled.<uid>.plist exists. launchd reads it
 	 * once, between its finish-demo-restore and sysstatuscheck boot tasks. The user/501 domain shares the system
