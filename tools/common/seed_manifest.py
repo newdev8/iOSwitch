@@ -73,11 +73,12 @@ def check_rights(ipa: Path, policy: Path, profile: str) -> None:
         policy.read_text().replace('$(AppIdentifierPrefix)', prefix + '.').replace('$(CFBundleIdentifier)', IDENTIFIER)
     )
     expected = plistlib.loads(template.encode())
-    if profile == 'debug' and 'get-task-allow' in rights:
+    # The adhoc profile adds get-task-allow to every signed build, release included.
+    if 'get-task-allow' in rights:
         expected['get-task-allow'] = True
     if 'com.apple.developer.team-identifier' in rights:
         expected['com.apple.developer.team-identifier'] = prefix
-    if plistlib.dumps(expected) != plistlib.dumps(rights):
+    if expected != rights:
         raise ValueError('Installer entitlements differ from the image policy')
 
 
