@@ -25,7 +25,7 @@ TOOLS = ["lld", "ld.lld", "llvm-objcopy", "llvm-readobj", "llvm-readelf", "llvm-
 
 
 def _llvm_impl(rctx):
-    release = LLVM_RELEASES[rctx.os.arch]
+    release = LLVM_RELEASES.get(rctx.os.arch) or LLVM_RELEASES["arm64"]
     archive = "llvm.tar.xz"
     rctx.download(url = release["url"], output = archive, sha256 = release["sha256"])
     result = rctx.execute(["/usr/bin/tar", "-xJf", archive, "--strip-components", "1"] +
