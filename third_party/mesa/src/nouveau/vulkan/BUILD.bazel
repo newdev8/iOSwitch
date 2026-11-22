@@ -802,6 +802,7 @@ mesa_dylib(
     }),
     platform = select({
         "//third_party/mesa/bazel:ios": "ios",
+        "//third_party/mesa/bazel:macos_x86_64": "macos_x86_64",
         "//conditions:default": "macos",
     }),
     stubs = "nvk-absent-entrypoints",

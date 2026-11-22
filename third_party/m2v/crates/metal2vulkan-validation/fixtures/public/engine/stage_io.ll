@@ -5,7 +5,7 @@ target datalayout = "e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f3
 target triple = "air64_v28-apple-macosx26.0.0"
 
 ; Function Attrs: mustprogress nofree nosync nounwind willreturn memory(none)
-define <{ <4 x float>, <2 x half>, <4 x float>, i32, float }> @stage_io_vertex(<3 x float> %0, <2 x half> %1, <2 x i16> %2, <4 x i8> %3, ptr addrspace(2) noundef readonly align 16 captures(none) dereferenceable(16) "air-buffer-no-alias" %4, i32 noundef %5, i32 noundef %6) local_unnamed_addr #0 {
+define <{ <4 x float>, <2 x half>, <4 x float>, i32, float }> @stage_io_vertex(<3 x float> %0, <2 x half> %1, <2 x i16> %2, <4 x i8> %3, ptr addrspace(2) noundef readonly align 16 dereferenceable(16) "air-buffer-no-alias" %4, i32 noundef %5, i32 noundef %6) local_unnamed_addr #0 {
   %8 = shufflevector <3 x float> %0, <3 x float> poison, <4 x i32> <i32 0, i32 1, i32 2, i32 poison>
   %9 = insertelement <4 x float> %8, float 1.000000e+00, i64 3
   %10 = load <4 x float>, ptr addrspace(2) %4, align 16, !tbaa !75, !alias.scope !78

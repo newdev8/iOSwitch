@@ -11,7 +11,7 @@ define i32 @linked_offset(i32 noundef %0) local_unnamed_addr #0 {
 }
 
 ; Function Attrs: mustprogress nounwind
-define void @linked_visible_caller(ptr addrspace(1) noundef writeonly captures(none) "air-buffer-no-alias" %0, ptr addrspace(1) noundef writeonly captures(none) "air-buffer-no-alias" %1, i32 noundef %2) local_unnamed_addr #1 {
+define void @linked_visible_caller(ptr addrspace(1) noundef writeonly "air-buffer-no-alias" %0, ptr addrspace(1) noundef writeonly "air-buffer-no-alias" %1, i32 noundef %2) local_unnamed_addr #1 {
   %4 = tail call i32 @linked_scale.MTL_VISIBLE_FN_REF(i32 noundef %2) #4
   %5 = zext i32 %2 to i64
   %6 = getelementptr inbounds i32, ptr addrspace(1) %0, i64 %5
@@ -31,7 +31,7 @@ declare float @linked_blend.MTL_VISIBLE_FN_REF(float, float) local_unnamed_addr 
 declare float @air.convert.f.f32.u.i32(i32) local_unnamed_addr #2
 
 ; Function Attrs: mustprogress nounwind
-define void @linked_visible_sampling(ptr addrspace(1) %0, ptr addrspace(1) noundef writeonly captures(none) "air-buffer-no-alias" %1, i32 noundef %2) local_unnamed_addr #3 {
+define void @linked_visible_sampling(ptr addrspace(1) %0, ptr addrspace(1) noundef writeonly "air-buffer-no-alias" %1, i32 noundef %2) local_unnamed_addr #3 {
   %4 = tail call fast float @air.convert.f.f32.u.i32(i32 %2) #5
   %5 = insertelement <2 x float> poison, float %4, i64 0
   %6 = fmul fast <2 x float> %5, <float 2.500000e-01, float poison>

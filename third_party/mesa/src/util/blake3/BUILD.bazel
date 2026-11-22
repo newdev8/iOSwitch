@@ -32,9 +32,18 @@ mesa_cc_library(
     name = "blake3",
     c_args = mesa_args(
         "c",
-        extra = [
-            "-Wno-error",
-        ],
+        extra = {
+            "ios": ["-Wno-error"],
+            # The vendored tree has no x86-64 .S variants; the portable path serves the mock harness (the defines
+            # are unread anywhere else: they only gate IS_X86 code).
+            "macos": [
+                "-Wno-error",
+                "-DBLAKE3_NO_SSE2",
+                "-DBLAKE3_NO_SSE41",
+                "-DBLAKE3_NO_AVX2",
+                "-DBLAKE3_NO_AVX512",
+            ],
+        },
         include_dirs = [
             "gen:src/util/blake3",
             "src/util/blake3",
@@ -44,6 +53,8 @@ mesa_cc_library(
         "blake3.c",
         "blake3_dispatch.c",
         "blake3_portable.c",
-        "blake3_neon.c",
-    ],
+    ] + select({
+        "@platforms//cpu:aarch64": ["blake3_neon.c"],
+        "//conditions:default": [],
+    }),
 )

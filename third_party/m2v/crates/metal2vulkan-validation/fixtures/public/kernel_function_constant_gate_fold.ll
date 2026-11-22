@@ -8,7 +8,7 @@ target triple = "spirv-unknown-vulkan1.2"
 @llvm.global_ctors = appending global [1 x { i32, ptr, ptr }] [{ i32, ptr, ptr } { i32 65535, ptr @_GLOBAL__sub_I_kernel_function_constant_gate_fold.metal, ptr null }]
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn
-define void @fcfold(ptr addrspace(1) readonly captures(none) "air-buffer-no-alias" %0, ptr addrspace(1) writeonly captures(none) "air-buffer-no-alias" %1, i32 %2) local_unnamed_addr #0 {
+define void @fcfold(ptr addrspace(1) readonly "air-buffer-no-alias" %0, ptr addrspace(1) writeonly "air-buffer-no-alias" %1, i32 %2) local_unnamed_addr #0 {
   %4 = zext i32 %2 to i64
   %5 = getelementptr inbounds float, ptr addrspace(1) %0, i64 %4
   %6 = load float, ptr addrspace(1) %5, align 4, !tbaa !23, !alias.scope !27, !noalias !30

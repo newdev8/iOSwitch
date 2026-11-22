@@ -24,14 +24,14 @@ define float @linked_blend(float noundef %0, float noundef %1) local_unnamed_add
 }
 
 ; Function Attrs: convergent mustprogress nofree nounwind willreturn memory(argmem: read)
-define <4 x float> @linked_sample(ptr addrspace(1) readonly captures(none) %0, <2 x float> noundef %1) local_unnamed_addr #2 {
-  %3 = tail call { <4 x float>, i8 } @air.sample_texture_2d.v4f32(ptr addrspace(1) readonly captures(none) %0, ptr addrspace(2) readonly captures(none) @__air_sampler_state, <2 x float> %1, i1 true, <2 x i32> zeroinitializer, i1 true, float 0.000000e+00, float 0.000000e+00, i32 0) #6
+define <4 x float> @linked_sample(ptr addrspace(1) readonly %0, <2 x float> noundef %1) local_unnamed_addr #2 {
+  %3 = tail call { <4 x float>, i8 } @air.sample_texture_2d.v4f32(ptr addrspace(1) readonly %0, ptr addrspace(2) readonly @__air_sampler_state, <2 x float> %1, i1 true, <2 x i32> zeroinitializer, i1 true, float 0.000000e+00, float 0.000000e+00, i32 0) #6
   %4 = extractvalue { <4 x float>, i8 } %3, 0
   ret <4 x float> %4
 }
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: write)
-define void @linked_visible_functions(ptr addrspace(1) noundef writeonly captures(none) "air-buffer-no-alias" %0, i32 noundef %1) local_unnamed_addr #3 {
+define void @linked_visible_functions(ptr addrspace(1) noundef writeonly "air-buffer-no-alias" %0, i32 noundef %1) local_unnamed_addr #3 {
   %3 = zext i32 %1 to i64
   %4 = getelementptr inbounds i32, ptr addrspace(1) %0, i64 %3
   store i32 %1, ptr addrspace(1) %4, align 4, !tbaa !39, !alias.scope !43
@@ -39,7 +39,7 @@ define void @linked_visible_functions(ptr addrspace(1) noundef writeonly capture
 }
 
 ; Function Attrs: convergent mustprogress nofree nounwind willreturn memory(argmem: read)
-declare { <4 x float>, i8 } @air.sample_texture_2d.v4f32(ptr addrspace(1) readonly captures(none), ptr addrspace(2) readonly captures(none), <2 x float>, i1, <2 x i32>, i1, float, float, i32) local_unnamed_addr #4
+declare { <4 x float>, i8 } @air.sample_texture_2d.v4f32(ptr addrspace(1) readonly , ptr addrspace(2) readonly , <2 x float>, i1, <2 x i32>, i1, float, float, i32) local_unnamed_addr #4
 
 attributes #0 = { mustprogress nounwind "approx-func-fp-math"="true" "frame-pointer"="all" "min-legal-vector-width"="0" "no-builtins" "no-infs-fp-math"="true" "no-nans-fp-math"="true" "no-signed-zeros-fp-math"="true" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "unsafe-fp-math"="true" }
 attributes #1 = { mustprogress nofree norecurse nosync nounwind willreturn memory(none) "approx-func-fp-math"="true" "frame-pointer"="all" "min-legal-vector-width"="0" "no-builtins" "no-infs-fp-math"="true" "no-nans-fp-math"="true" "no-signed-zeros-fp-math"="true" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "unsafe-fp-math"="true" }

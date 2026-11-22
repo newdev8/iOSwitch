@@ -7,7 +7,7 @@ target triple = "air64_v28-apple-macosx26.0.0"
 @__air_sampler_state = internal addrspace(2) constant [2 x i64] [i64 34901797601020489, i64 0], align 8
 
 ; Function Attrs: mustprogress nofree nosync nounwind willreturn memory(argmem: readwrite)
-define void @scale_and_offset(ptr addrspace(1) noundef readonly captures(none) "air-buffer-no-alias" %0, ptr addrspace(1) noundef writeonly captures(none) "air-buffer-no-alias" %1, ptr addrspace(2) noundef readonly align 4 captures(none) dereferenceable(4) "air-buffer-no-alias" %2, i32 noundef %3) local_unnamed_addr #0 {
+define void @scale_and_offset(ptr addrspace(1) noundef readonly "air-buffer-no-alias" %0, ptr addrspace(1) noundef writeonly "air-buffer-no-alias" %1, ptr addrspace(2) noundef readonly align 4 dereferenceable(4) "air-buffer-no-alias" %2, i32 noundef %3) local_unnamed_addr #0 {
   %5 = zext i32 %3 to i64
   %6 = getelementptr inbounds float, ptr addrspace(1) %0, i64 %5
   %7 = load float, ptr addrspace(1) %6, align 4, !tbaa !49, !alias.scope !53, !noalias !56
@@ -24,7 +24,7 @@ define void @scale_and_offset(ptr addrspace(1) noundef readonly captures(none) "
 declare float @air.convert.f.f32.u.i32(i32) local_unnamed_addr #1
 
 ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: read)
-define <{ <4 x float>, <4 x float> }> @colored_vertex(ptr addrspace(1) noundef readonly captures(none) "air-buffer-no-alias" %0, ptr addrspace(1) noundef readonly captures(none) "air-buffer-no-alias" %1, i32 noundef %2) local_unnamed_addr #2 {
+define <{ <4 x float>, <4 x float> }> @colored_vertex(ptr addrspace(1) noundef readonly "air-buffer-no-alias" %0, ptr addrspace(1) noundef readonly "air-buffer-no-alias" %1, i32 noundef %2) local_unnamed_addr #2 {
   %4 = zext i32 %2 to i64
   %5 = getelementptr inbounds <2 x float>, ptr addrspace(1) %0, i64 %4
   %6 = load <2 x float>, ptr addrspace(1) %5, align 8, !tbaa !63, !alias.scope !64, !noalias !67
@@ -43,38 +43,38 @@ define <4 x float> @colored_fragment(<4 x float> %0, <4 x float> returned %1) lo
 }
 
 ; Function Attrs: convergent mustprogress nofree nounwind willreturn memory(argmem: read)
-define <4 x half> @sampled_fragment(<4 x float> %0, <4 x float> %1, ptr addrspace(1) readonly captures(none) %2) local_unnamed_addr #4 {
+define <4 x half> @sampled_fragment(<4 x float> %0, <4 x float> %1, ptr addrspace(1) readonly %2) local_unnamed_addr #4 {
   %4 = shufflevector <4 x float> %0, <4 x float> poison, <2 x i32> <i32 0, i32 1>
   %5 = fmul fast <2 x float> %4, splat (float 1.250000e-01)
-  %6 = tail call { <4 x half>, i8 } @air.sample_texture_2d.v4f16(ptr addrspace(1) readonly captures(none) %2, ptr addrspace(2) readonly captures(none) @__air_sampler_state, <2 x float> %5, i1 true, <2 x i32> zeroinitializer, i1 false, float 0.000000e+00, float 0.000000e+00, i32 0) #11
+  %6 = tail call { <4 x half>, i8 } @air.sample_texture_2d.v4f16(ptr addrspace(1) readonly %2, ptr addrspace(2) readonly @__air_sampler_state, <2 x float> %5, i1 true, <2 x i32> zeroinitializer, i1 false, float 0.000000e+00, float 0.000000e+00, i32 0) #11
   %7 = extractvalue { <4 x half>, i8 } %6, 0
   ret <4 x half> %7
 }
 
 ; Function Attrs: mustprogress nounwind willreturn
-define void @invert_texels(ptr addrspace(1) readonly captures(none) %0, ptr addrspace(1) %1, <2 x i32> noundef %2) local_unnamed_addr #5 {
+define void @invert_texels(ptr addrspace(1) readonly %0, ptr addrspace(1) %1, <2 x i32> noundef %2) local_unnamed_addr #5 {
   %4 = tail call ptr addrspace(2) @air.get_read_sampler() #12
-  %5 = tail call { <4 x float>, i8 } @air.read_texture_2d.v4f32(ptr addrspace(1) readonly captures(none) %0, ptr addrspace(2) %4, <2 x i32> %2, <2 x i32> zeroinitializer, i32 0, i32 1) #13
+  %5 = tail call { <4 x float>, i8 } @air.read_texture_2d.v4f32(ptr addrspace(1) readonly %0, ptr addrspace(2) %4, <2 x i32> %2, <2 x i32> zeroinitializer, i32 0, i32 1) #13
   %6 = extractvalue { <4 x float>, i8 } %5, 0
   %7 = shufflevector <4 x float> %6, <4 x float> poison, <3 x i32> <i32 0, i32 1, i32 2>
   %8 = fsub fast <3 x float> splat (float 1.000000e+00), %7
   %9 = shufflevector <3 x float> %8, <3 x float> poison, <4 x i32> <i32 0, i32 1, i32 2, i32 poison>
   %10 = shufflevector <4 x float> %9, <4 x float> %6, <4 x i32> <i32 0, i32 1, i32 2, i32 7>
-  tail call void @air.write_texture_2d.v4f32(ptr addrspace(1) captures(none) %1, <2 x i32> %2, <4 x float> %10, i32 0, i32 2) #14, !alias.scope !69
+  tail call void @air.write_texture_2d.v4f32(ptr addrspace(1) %1, <2 x i32> %2, <4 x float> %10, i32 0, i32 2) #14, !alias.scope !69
   ret void
 }
 
 ; Function Attrs: convergent mustprogress nofree nounwind willreturn memory(argmem: read)
-declare { <4 x half>, i8 } @air.sample_texture_2d.v4f16(ptr addrspace(1) readonly captures(none), ptr addrspace(2) readonly captures(none), <2 x float>, i1, <2 x i32>, i1, float, float, i32) local_unnamed_addr #6
+declare { <4 x half>, i8 } @air.sample_texture_2d.v4f16(ptr addrspace(1) readonly , ptr addrspace(2) readonly , <2 x float>, i1, <2 x i32>, i1, float, float, i32) local_unnamed_addr #6
 
 ; Function Attrs: mustprogress nofree nounwind willreturn memory(inaccessiblemem: read)
 declare ptr addrspace(2) @air.get_read_sampler() local_unnamed_addr #7
 
 ; Function Attrs: mustprogress nofree nounwind willreturn memory(argmem: read)
-declare { <4 x float>, i8 } @air.read_texture_2d.v4f32(ptr addrspace(1) readonly captures(none), ptr addrspace(2), <2 x i32>, <2 x i32>, i32, i32) local_unnamed_addr #8
+declare { <4 x float>, i8 } @air.read_texture_2d.v4f32(ptr addrspace(1) readonly , ptr addrspace(2), <2 x i32>, <2 x i32>, i32, i32) local_unnamed_addr #8
 
 ; Function Attrs: mustprogress nounwind willreturn memory(argmem: readwrite)
-declare void @air.write_texture_2d.v4f32(ptr addrspace(1) captures(none), <2 x i32>, <4 x float>, i32, i32) local_unnamed_addr #9
+declare void @air.write_texture_2d.v4f32(ptr addrspace(1) , <2 x i32>, <4 x float>, i32, i32) local_unnamed_addr #9
 
 attributes #0 = { mustprogress nofree nosync nounwind willreturn memory(argmem: readwrite) "approx-func-fp-math"="true" "frame-pointer"="all" "min-legal-vector-width"="0" "no-builtins" "no-infs-fp-math"="true" "no-nans-fp-math"="true" "no-signed-zeros-fp-math"="true" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "unsafe-fp-math"="true" }
 attributes #1 = { mustprogress nofree nosync nounwind willreturn memory(none) }
