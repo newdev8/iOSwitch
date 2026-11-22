@@ -29,13 +29,14 @@ MESA_TREE = "615cfd2ddf8c8970ee518f7930bad06c16dd1db8"
 ) for name, platform in (
     ("ios", "ios"),
     ("host", "macos"),
+    ("host_x86_64", "macos_x86_64"),
 )]
 
 [filegroup(
     name = "{}_{}".format(name, group),
     srcs = [":" + name],
     output_group = group,
-) for name in ("ios", "host") for group in ("dylib", "source")]
+) for name in ("ios", "host", "host_x86_64") for group in ("dylib", "source")]
 
 # What //gpu:bundle takes.
 [alias(
@@ -46,4 +47,5 @@ MESA_TREE = "615cfd2ddf8c8970ee518f7930bad06c16dd1db8"
     ("dylib_source", ":ios_source"),
     ("twin", ":host_dylib"),
     ("twin_source", ":host_source"),
+    ("twin_x86_64", ":host_x86_64_dylib"),
 )]

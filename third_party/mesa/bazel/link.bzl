@@ -26,6 +26,7 @@ _MESA = "third_party/mesa"
 _STUB_TRIPLE = {
     "ios": "arm64-apple-ios17.0",
     "macos": "arm64-apple-macos27.0",
+    "macos_x86_64": "x86_64-apple-macos13.3",
 }
 
 def _archive(target):
@@ -45,6 +46,9 @@ def _mesa_dylib_impl(ctx):
         action_name = action,
         variables = cc_common.empty_variables(),
     )
+    # The stock toolchain's link flags assume the pinned Xcode's ld; an older Xcode's rejects this one, and the
+    # link does not need it (it only silences duplicate-member warnings).
+    target_flags = [flag for flag in target_flags if flag != "-Wl,-no_warn_duplicate_libraries"]
 
     root = ctx.bin_dir.path + "/" + _MESA
     up = "/".join([".."] * len(root.split("/")))
@@ -53,6 +57,11 @@ def _mesa_dylib_impl(ctx):
         if f.path.startswith(root + "/"):
             return f.path[len(root) + 1:]
         return up + "/" + f.path
+
+    # The linker's path is relative to the execution root; the link runs from `root` (below), so spell it
+    # relative to it like every other argument. An absolute path needs no prefix.
+    if not clangxx.startswith("/"):
+        clangxx = up + "/" + clangxx
 
     out = ctx.actions.declare_file(ctx.attr.out)
     link1 = ctx.actions.declare_file("link1/" + ctx.attr.out)
@@ -169,6 +178,7 @@ def _mesa_relocatable_impl(ctx):
         action_name = action,
         variables = cc_common.empty_variables(),
     )
+    target_flags = [flag for flag in target_flags if flag != "-Wl,-no_warn_duplicate_libraries"]
     out = ctx.actions.declare_file(ctx.attr.out)
     link1 = ctx.actions.declare_file("link1/" + ctx.attr.out)
     stubs_s = ctx.actions.declare_file(ctx.attr.name + "_absent.s")

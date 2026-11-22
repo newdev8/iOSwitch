@@ -195,8 +195,9 @@ def _mesa_archive_impl(ctx):
         variables = cc_common.empty_variables(),
     )
     args = ctx.actions.args()
-    args.add("rcs", out)
+    args.add("-static")
     args.add_all(objects)
+    args.add("-o", out)
     ctx.actions.run(
         executable = ar,
         arguments = [args],
@@ -265,6 +266,7 @@ _RUST = "//bazel/rust:toolchain_version"
 MESA_PLATFORMS = {
     "ios": "//bazel/platforms:ios_arm64",
     "macos": "//bazel/platforms:macos_user_arm64",
+    "macos_x86_64": "//bazel/platforms:macos_user_x86_64",
 }
 
 def _mesa_platform_impl(_settings, attr):

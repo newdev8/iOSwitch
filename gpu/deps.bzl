@@ -45,17 +45,27 @@ def lock_packages(text):
 # llvm-as of LLVM 23.1.4, the version the bridge's AIR fixtures were assembled with (Homebrew's; the bitcode records
 # the writer's version, and the fixtures are compiled into the plugin). Only bin/llvm-as of the release archive is
 # extracted; the archive is the same download (and sha256) as toolchains_llvm's, so the repository cache holds it once.
-LLVM_RELEASE = {
-    "url": "https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.4/LLVM-23.1.4-macOS-ARM64.tar.xz",
-    "sha256": "5d3179db39adeca5b17a34d82708fe976bc60e055b05fe557878fb3fb64d39ef",
-    "prefix": "LLVM-23.1.4-macOS-ARM64",
+LLVM_RELEASES = {
+    "arm64": {
+        "url": "https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.4/LLVM-23.1.4-macOS-ARM64.tar.xz",
+        "sha256": "5d3179db39adeca5b17a34d82708fe976bc60e055b05fe557878fb3fb64d39ef",
+        "prefix": "LLVM-23.1.4-macOS-ARM64",
+        "clang": "23",
+    },
+    "x86_64": {
+        "url": "https://github.com/llvm/llvm-project/releases/download/llvmorg-19.1.7/LLVM-19.1.7-macOS-X64.tar.xz",
+        "sha256": "49405e75fbe7ad6f8139a33f59ec8c5112b75b3027405c7b92d19f4c6f02c78a",
+        "prefix": "LLVM-19.1.7-macOS-X64",
+        "clang": "19",
+    },
 }
 
 def _llvm_tools_impl(rctx):
+    release = LLVM_RELEASES.get(rctx.os.arch) or LLVM_RELEASES["arm64"]
     archive = "llvm.tar.xz"
-    rctx.download(url = LLVM_RELEASE["url"], output = archive, sha256 = LLVM_RELEASE["sha256"])
+    rctx.download(url = release["url"], output = archive, sha256 = release["sha256"])
     _run(rctx, ["/usr/bin/tar", "-xJf", archive, "--strip-components", "1"] +
-               [LLVM_RELEASE["prefix"] + "/bin/" + tool for tool in rctx.attr.tools])
+               [release["prefix"] + "/bin/" + tool for tool in rctx.attr.tools])
     rctx.delete(archive)
     rctx.file("BUILD.bazel", 'package(default_visibility = ["//visibility:public"])\n\nexports_files({})\n'.format(
         repr(["bin/" + tool for tool in rctx.attr.tools]),

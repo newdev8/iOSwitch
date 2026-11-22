@@ -10,21 +10,35 @@ sha256. Mesa itself is vendored (third_party/mesa), as are the crates of its mes
                  is the one @llvm already fetched, so the repository cache holds it once).
 """
 
-load("//gpu:deps.bzl", "LLVM_RELEASE", "lock_packages")
+load("//gpu:deps.bzl", "LLVM_RELEASES", "lock_packages")
 
 _RUST_DIST = "https://static.rust-lang.org/dist/2026-06-30/"
 
-# (archive, component directory inside it, sha256): channel-rust-1.96.1.toml's xz_hash values.
-RUST_COMPONENTS = [
-    ("rustc-1.96.1-aarch64-apple-darwin", "rustc", "9b548f0665f85f3c7fd45165611e3dea79f048c69d163be193986310d204fc2c"),
-    ("cargo-1.96.1-aarch64-apple-darwin", "cargo", "2f43d75e9ad3febae5022c6f295cf93b74131cfdb1293a83e291f878ea9585a0"),
+# (archive, component directory inside it, sha256): channel-rust-1.96.1.toml's xz_hash values. The host components
+# (rustc, cargo, rustfmt) run on the build Mac, so each arch takes its own; the target standard libraries all hosts
+# compile with are pinned once here, rust-src is arch-neutral.
+RUST_HOST_COMPONENTS = {
+    "aarch64": [
+        ("rustc-1.96.1-aarch64-apple-darwin", "rustc", "9b548f0665f85f3c7fd45165611e3dea79f048c69d163be193986310d204fc2c"),
+        ("cargo-1.96.1-aarch64-apple-darwin", "cargo", "2f43d75e9ad3febae5022c6f295cf93b74131cfdb1293a83e291f878ea9585a0"),
+        # Mesa's generators and bindgen format the Rust they write with it; the format reaches the binary through
+        # panic locations (line numbers), so it is part of the toolchain.
+        ("rustfmt-1.96.1-aarch64-apple-darwin", "rustfmt-preview", "ed0cc9d72c04e7c3c4b7a82ab7f1ce5e33132017d062d8f9be6adf6472e8f165"),
+    ],
+    "x86_64": [
+        ("rustc-1.96.1-x86_64-apple-darwin", "rustc", "814e1ed2d19952cf9771aeff5e0d4e0b77eefa76a689809f2c1bf769187ab051"),
+        ("cargo-1.96.1-x86_64-apple-darwin", "cargo", "128041aa757a6bbc60664079ff294281cdbabd51cc4b7c1f7d40cd1b1ea955f5"),
+        ("rustfmt-1.96.1-x86_64-apple-darwin", "rustfmt-preview", "9454c897908bf468306bd2f230a5b03dbbaaec0a29e1a0e614a19da73fad5d56"),
+    ],
+}
+
+RUST_TARGET_STD = [
     ("rust-std-1.96.1-aarch64-apple-darwin", "rust-std-aarch64-apple-darwin", "0d433a74c303febc915f8fa1091ef166445706461d0c96984ecb7303aa8208f5"),
     ("rust-std-1.96.1-aarch64-apple-ios", "rust-std-aarch64-apple-ios", "2e37eef9c15ed9d73c6967965183d119609bf621c2394f71e3344428a0cb4742"),
-    ("rust-src-1.96.1", "rust-src", "b343b6553bc772225f6a2b5be5055017f29794dcf4e08020366b27a0a40fc1c2"),
-    # Mesa's generators and bindgen format the Rust they write with it; the format reaches the binary through
-    # panic locations (line numbers), so it is part of the toolchain.
-    ("rustfmt-1.96.1-aarch64-apple-darwin", "rustfmt-preview", "ed0cc9d72c04e7c3c4b7a82ab7f1ce5e33132017d062d8f9be6adf6472e8f165"),
+    ("rust-std-1.96.1-x86_64-apple-darwin", "rust-std-x86_64-apple-darwin", "a094fc4d30985f48aff70629d7a6c1f16d314a63f3cb141927095b6d506edd35"),
 ]
+
+RUST_SRC = ("rust-src-1.96.1", "rust-src", "b343b6553bc772225f6a2b5be5055017f29794dcf4e08020366b27a0a40fc1c2")
 
 CARGO_TOOLS = {
     "nvk_bindgen_src": ("bindgen-cli", "0.73.2", "5622e043625b6d1f32c84f53699690a44d1419e657879de26eb252699f5ebb7c"),
@@ -60,23 +74,23 @@ filegroup(
     name = "rustc_lib",
     srcs = glob([
         "lib/*.dylib*",
-        "lib/rustlib/aarch64-apple-darwin/codegen-backends/*.dylib",
-        "lib/rustlib/aarch64-apple-darwin/lib/*.dylib*",
-        "lib/rustlib/aarch64-apple-darwin/lib/*.rmeta",
+        "lib/rustlib/{host}/codegen-backends/*.dylib",
+        "lib/rustlib/{host}/lib/*.dylib*",
+        "lib/rustlib/{host}/lib/*.rmeta",
     ], allow_empty = True),
 )
 
 [rust_stdlib_filegroup(
     name = "rust_std-" + triple,
     srcs = glob([
-        "lib/rustlib/{}/lib/*.rlib".format(triple),
-        "lib/rustlib/{}/lib/*.rmeta".format(triple),
-        "lib/rustlib/{}/lib/*.dylib*".format(triple),
-        "lib/rustlib/{}/lib/*.a".format(triple),
-        "lib/rustlib/{}/lib/self-contained/**".format(triple),
+        "lib/rustlib/{{}}/lib/*.rlib".format(triple),
+        "lib/rustlib/{{}}/lib/*.rmeta".format(triple),
+        "lib/rustlib/{{}}/lib/*.dylib*".format(triple),
+        "lib/rustlib/{{}}/lib/*.a".format(triple),
+        "lib/rustlib/{{}}/lib/self-contained/**".format(triple),
         "lib/rustlib/src/rust/**",
     ], allow_empty = True),
-) for triple in ("aarch64-apple-darwin", "aarch64-apple-ios")]
+) for triple in ("aarch64-apple-darwin", "aarch64-apple-ios", "x86_64-apple-darwin")]
 
 [rust_toolchain(
     name = "rust_toolchain-" + triple,
@@ -84,7 +98,7 @@ filegroup(
     cargo = "bin/cargo",
     default_edition = "2021",
     dylib_ext = ".dylib",
-    exec_triple = "aarch64-apple-darwin",
+    exec_triple = "{host}",
     rust_doc = "bin/rustdoc",
     rust_std = ":rust_std-" + triple,
     rustc = "bin/rustc",
@@ -94,16 +108,20 @@ filegroup(
     stdlib_linkflags = ["-lSystem", "-lresolv"],
     target_triple = triple,
     version = "1.96.1",
-) for triple in ("aarch64-apple-darwin", "aarch64-apple-ios")]
+) for triple in ("aarch64-apple-darwin", "aarch64-apple-ios", "x86_64-apple-darwin")]
 
 [toolchain(
     name = "rust-" + triple,
-    exec_compatible_with = ["@platforms//cpu:aarch64", "@platforms//os:osx"],
-    target_compatible_with = ["@platforms//cpu:aarch64", os],
+    exec_compatible_with = ["@platforms//cpu:" + cpu, "@platforms//os:osx"],
+    target_compatible_with = ["@platforms//cpu:" + cpu, os],
     target_settings = ["@@//bazel/rust:toolchain_1.96.1"],
     toolchain = ":rust_toolchain-" + triple,
     toolchain_type = "@rules_rust//rust:toolchain",
-) for triple, os in (("aarch64-apple-darwin", "@platforms//os:osx"), ("aarch64-apple-ios", "@platforms//os:ios"))]
+) for triple, cpu, os in (
+    ("aarch64-apple-darwin", "aarch64", "@platforms//os:osx"),
+    ("aarch64-apple-ios", "aarch64", "@platforms//os:ios"),
+    ("x86_64-apple-darwin", "x86_64", "@platforms//os:osx"),
+)]
 """
 
 # rustfmt takes the first rustfmt.toml above its working directory. In a sandbox that is wherever the output base lives:
@@ -116,7 +134,9 @@ exec "$here/rustfmt-real" --config-path "$here/../rustfmt.toml" "$@"
 """
 
 def _rust_sysroot_impl(rctx):
-    for archive, component, sha256 in RUST_COMPONENTS:
+    host = "x86_64-apple-darwin" if rctx.os.arch == "x86_64" else "aarch64-apple-darwin"
+    components = (RUST_HOST_COMPONENTS.get(rctx.os.arch) or RUST_HOST_COMPONENTS["aarch64"]) + RUST_TARGET_STD + [RUST_SRC]
+    for archive, component, sha256 in components:
         rctx.download_and_extract(
             url = _RUST_DIST + archive + ".tar.xz",
             sha256 = sha256,
@@ -125,7 +145,7 @@ def _rust_sysroot_impl(rctx):
     rctx.rename("bin/rustfmt", "bin/rustfmt-real")
     rctx.file("bin/rustfmt", _RUSTFMT_WRAPPER, executable = True)
     rctx.file("rustfmt.toml", "")
-    rctx.file("BUILD.bazel", _ALL_FILES + _RUST_TOOLCHAINS)
+    rctx.file("BUILD.bazel", _ALL_FILES + _RUST_TOOLCHAINS.format(host = host))
 
     # Pinned downloads only: the repository contents cache shares this across output bases and worktrees.
     return rctx.repo_metadata(reproducible = True)
@@ -175,8 +195,9 @@ cargo_tool_source = repository_rule(
 
 def _libclang_impl(rctx):
     archive = "llvm.tar.xz"
-    rctx.download(url = LLVM_RELEASE["url"], output = archive, sha256 = LLVM_RELEASE["sha256"])
-    prefix = LLVM_RELEASE["prefix"]
+    release = LLVM_RELEASES.get(rctx.os.arch) or LLVM_RELEASES["arm64"]
+    rctx.download(url = release["url"], output = archive, sha256 = release["sha256"])
+    prefix = release["prefix"]
     result = rctx.execute([
         "/usr/bin/tar",
         "-xJf",
@@ -184,7 +205,7 @@ def _libclang_impl(rctx):
         "--strip-components",
         "1",
         prefix + "/lib/libclang.dylib",
-        prefix + "/lib/clang/23/include",
+        prefix + "/lib/clang/" + release["clang"] + "/include",
     ])
     if result.return_code:
         fail("extracting libclang: " + result.stderr)

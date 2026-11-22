@@ -62,6 +62,15 @@ platform(
 )
 
 platform(
+    name = "macos_user_x86_64",
+    constraint_values = [
+        "@platforms//os:osx",
+        "@platforms//cpu:x86_64",
+        ":user",
+    ],
+)
+
+platform(
     name = "macos_arm64",
     constraint_values = [
         "@platforms//os:osx",

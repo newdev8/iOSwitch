@@ -15,10 +15,10 @@ lock(
     name = "requirements",
     srcs = ["requirements.in"],
     out = "requirements_lock.txt",
-    # The one platform the build runs on (bazel/host: Xcode).
+    # One lock for every platform the build runs on (bazel/host: Xcode, Intel and Apple Silicon): uv's universal
+    # resolution, hashes for all of a package's wheels and sdists.
     args = [
-        "--python-platform",
-        "aarch64-apple-darwin",
+        "--universal",
     ],
     python_version = "3.13",
 )
