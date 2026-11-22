@@ -38,6 +38,28 @@ bool_setting(
     build_setting_default = SMP,
 )
 
+# The release's loader compiles in the layout of the window its CI staged, whose trust cache holds the cdhash of the
+# installd that CI re-signed. A Mac whose codesign produces a different cdhash stages a different window, and the
+# release loader rightly refuses it; --//boot:local_loader compiles the loader here against this Mac's window instead
+# (run-image.sh sets it when the selected Xcode is not the pinned 27.2).
+bool_flag(
+    name = "local_loader",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "loader_prebuilt",
+    flag_values = {":local_loader": "false"},
+)
+
+selects.config_setting_group(
+    name = "release_loader",
+    match_all = [
+        ":loader_prebuilt",
+        "//install:from_release",
+    ],
+)
+
 # The GPU bundle's trust cache module, appended to the kernel's static trust cache so the plugin may run.
 
 # --//boot:gpu_trustcache=//boot:no_gpu packages without it (what the CMake flow did when out/gpu was absent).
