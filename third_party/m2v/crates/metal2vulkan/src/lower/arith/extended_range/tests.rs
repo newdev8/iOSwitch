@@ -27,8 +27,8 @@ use crate::spirv::error::BResult;
 use crate::spirv::ids::{GlobalId, TypeId, Value};
 use crate::spirv::interp::{self, Buffer, Config, Resources};
 use crate::spirv::ir::{
-    natural_layout, BinOp, ConvOp, ExecMode, ExecModel, IoDir, LayoutRule, MemAccess, StorageClass,
-    Type, TypedModule,
+    natural_layout, BinOp, ConvOp, ExecMode, ExecModel, Inst, IoDir, LayoutRule, MemAccess,
+    StorageClass, Type, TypedModule,
 };
 use crate::spirv::testing::sharded_tests;
 use metal2vulkan_devtools::xr_blends;
@@ -132,7 +132,14 @@ fn word(
 
 /// A kernel whose invocation `i` reads `op`'s words from buffer 0 and writes four to buffer 1.
 fn kernel(form: ExtendedRange, op: Op) -> BResult<TypedModule> {
+    kernel_on(form, op, false)
+}
+
+/// [`kernel`], on the Sm53 target where `sm53`: its codes' quotients, `half` roundings and exact
+/// products take their float forms (`residual_round`).
+fn kernel_on(form: ExtendedRange, op: Op, sm53: bool) -> BResult<TypedModule> {
     let mut b = ModuleBuilder::new();
+    b.set_native_half_conversions(sm53);
     let f32_ = b.ty(Type::Float { width: 32 })?;
     let u32_ = b.ty(Type::Int {
         width: 32,
@@ -240,9 +247,27 @@ fn kernel(form: ExtendedRange, op: Op) -> BResult<TypedModule> {
     b.finalize()
 }
 
+/// [`run_on`] off the Sm53 target; a decode, a tile value or an encode also on it, whose answers
+/// must be the same.
 fn run<const N: usize>(form: ExtendedRange, op: Op, lanes: &[[u32; N]]) -> Vec<[u32; 4]> {
+    let out = run_on(form, op, lanes, false);
+    if matches!(op, Op::Decode | Op::DecodeHalf | Op::Encode | Op::Tile) {
+        assert!(
+            run_on(form, op, lanes, true) == out,
+            "{form:?}: the Sm53 target answers otherwise"
+        );
+    }
+    out
+}
+
+fn run_on<const N: usize>(
+    form: ExtendedRange,
+    op: Op,
+    lanes: &[[u32; N]],
+    sm53: bool,
+) -> Vec<[u32; 4]> {
     assert_eq!(N as u32, op.words());
-    let m = kernel(form, op).expect("kernel");
+    let m = kernel_on(form, op, sm53).expect("kernel");
     let bytes: Vec<u8> = lanes
         .iter()
         .flatten()
@@ -371,6 +396,48 @@ fn every_code_reads_metals_value() {
                 },
             ];
             assert_eq!(*g, want.map(f32::to_bits), "{form:?} code {c}");
+        }
+    }
+}
+
+/// On the Sm53 target a linear or padded form's read divides no integers and its write multiplies
+/// none, its `half` read rounds through 16-bit floats, and each answers as off it ([`run`]).
+#[test]
+fn the_sm53_target_reads_and_writes_in_float_arithmetic() {
+    let takes = |m: &TypedModule, op: BinOp| {
+        m.blocks()
+            .iter()
+            .flat_map(|b| &b.insts)
+            .any(|n| matches!(n.inst, Inst::Binary { op: o, .. } if o == op))
+    };
+    let halves = |m: &TypedModule| {
+        m.types()
+            .iter()
+            .any(|(_, t)| matches!(t, Type::Float { width: 16 }))
+    };
+    for form in [
+        ExtendedRange::Bgr10 { srgb: false },
+        ExtendedRange::Bgra10 { srgb: false },
+        ExtendedRange::Planes { srgb: false },
+        ExtendedRange::Rg10X12,
+    ] {
+        for (op, integer) in [
+            (Op::Decode, BinOp::UDiv),
+            (Op::DecodeHalf, BinOp::UDiv),
+            (Op::Tile, BinOp::UDiv),
+            (Op::Encode, BinOp::UMulExtended),
+        ] {
+            if form.padded() && matches!(op, Op::Tile) {
+                continue;
+            }
+            let (sm53, other) = (
+                kernel_on(form, op, true).expect("kernel"),
+                kernel(form, op).expect("kernel"),
+            );
+            assert!(!takes(&sm53, integer) && takes(&other, integer), "{form:?} {integer:?}");
+            if matches!(op, Op::DecodeHalf | Op::Tile) {
+                assert!(halves(&sm53) && !halves(&other), "{form:?}");
+            }
         }
     }
 }

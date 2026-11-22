@@ -9,7 +9,7 @@ use metal2vulkan::metal::{
     AttributeFormat, BlendFactor, BlendOperation, ColorWriteMask, CompareFunction, DataType, IndexType, PixelFormat,
     PrimitiveTopologyClass, SamplerAddressMode, SamplerBorderColor, SamplerMinMagFilter, SamplerMipFilter,
     StepFunction, TessellationControlPointIndexType, TessellationFactorFormat, TessellationFactorStepFunction,
-    TessellationPartitionMode, VertexFormat, VertexStepFunction, Winding,
+    TessellationPartitionMode, TextureWriteRoundingMode, VertexFormat, VertexStepFunction, Winding,
 };
 use metal2vulkan::pipeline::{
     ColorAttachmentDescriptor, ComputePipelineDescriptor, FunctionDescriptor, LinkedFunction, LinkedFunctions,
@@ -403,6 +403,7 @@ pub struct NmbRenderPipelineDescriptorOf<F> {
     pub control_point_index_type: u64,
     pub factor_scale_enabled: u64,
     pub max_amplification: u64,
+    pub texture_write_rounding: u64,
 }
 
 pub fn optional_format(value: u64) -> Result<Option<PixelFormat>, String> {
@@ -508,6 +509,12 @@ pub fn render_descriptor<F: DescriptorFunction>(
         out.tessellation = Some(t);
     }
     out.max_vertex_amplification_count = d.max_amplification.max(1) as u32;
+    out.texture_write_rounding_mode = TextureWriteRoundingMode::from_raw(d.texture_write_rounding).map_err(|_| {
+        format!(
+            "textureWriteRoundingMode {} is not a Metal value",
+            d.texture_write_rounding
+        )
+    })?;
     Ok(out)
 }
 

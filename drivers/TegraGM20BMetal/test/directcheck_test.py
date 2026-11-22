@@ -1,9 +1,9 @@
-"""directcheck (raw/test/directcheck.mm) over a sample of the raw pack's states, as the runtime makes them.
+"""directcheck (harness/directcheck.mm) over a sample of the pack's states, as the runtime makes them.
 
 Each sampled state's record from the runtime's direct compile must be the pack's byte for byte, and its two-plane form's
 too for a state of RGB10A8_2P_XR10 colours; a state the pack set aside must be refused. The sample is fixed by the
 pack's bucket corpora: of their lines, the PLAIN and the TWO_PLANE (those naming a 550 colour) of lowest SHA-256, so a
-line added to the corpus moves at most one line out of it. The first of SHARDS processes makes the raw path's own states
+line added to the corpus moves at most one line out of it. The first of SHARDS processes makes the driver's own states
 as well.
 
 usage: directcheck_test.py <directcheck inputs.json>

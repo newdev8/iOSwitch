@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""mkpack's per-pipeline and baseline registers never hold a method the raw path owns, nor a target a state lacks.
+"""mkpack's per-pipeline and baseline registers never hold a method the driver owns, nor a target a state lacks.
 
 A probe's draws leave the shader local memory area (SET_SHADER_LOCAL_MEMORY_A..E) its own process sized, at its own
-address: a pack carrying it made raw bind another process's GPU address over the area raw_slm.h gives its channel.
+address: a pack carrying it made raw bind another process's GPU address over the area slm.h gives its channel.
 
 A state's targets are those its draw writes: a two-plane state's RGB10A8_2P_XR10 alpha targets are its own, at the
-indices runtime/raw_xr_pass.h gives them.
+indices runtime/xr_pass.h gives them.
 """
 
 import os
 import sys
 import unittest
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'raw', 'pack'))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'pack'))
 import directlink
 import mkpack
 import packfile
@@ -64,7 +64,7 @@ class ForeignTest(unittest.TestCase):
 
 class TwoPlaneTest(unittest.TestCase):
     def test_the_alpha_index_is_the_lowest_free_one(self) -> None:
-        # raw_xr_pass_test's TheAlphaIndexIsTheLowestFreeOne, the runtime's xrAlphaSlots on the same formats
+        # xr_pass_test's TheAlphaIndexIsTheLowestFreeOne, the runtime's xrAlphaSlots on the same formats
         cases = {
             (550,): [1],
             (550, 550): [2, 3],
@@ -103,8 +103,9 @@ class TwoPlaneTest(unittest.TestCase):
 
 class RasterOrderedTest(unittest.TestCase):
     def test_a_raster_ordered_record_keeps_its_interlock_control_and_its_flag(self) -> None:
-        # gpu.raw.raster_order: its program runs in the pixel interlock with no storage colour (PipelineRasterOrdered),
-        # whose SET_PIXEL_SHADER_INTERLOCK_CONTROL the runtime takes from the record's blob alone
+        # gpu.gm20b.raster_order: its program runs in the pixel interlock with no storage colour
+        # (PipelineRasterOrdered), whose SET_PIXEL_SHADER_INTERLOCK_CONTROL the runtime takes from the record's blob
+        # alone
         states = [
             made('samples=1 c0=80:15:0', {0x1A00: 0xF}, two_plane=False),
             made('samples=1 c0=70:0:0', {0x1A00: 0x0, 0x1224: 2}, two_plane=False, raster_ordered=True),

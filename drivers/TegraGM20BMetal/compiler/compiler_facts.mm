@@ -8,19 +8,19 @@
 #include <vector>
 #include "MetallibSlice.h"
 #include "TegraGM20BCompilerABI.h"
-#include "../raw/runtime/RawCompileRequest.h"
-#include "../raw/runtime/RawPipelineKey.h"
-#include "../raw/runtime/raw_buffer_encoders.h"
-#include "../raw/runtime/raw_compute_facts_entry.h"
-#include "../raw/runtime/raw_function_attributes.h"
-#include "../raw/runtime/raw_reflection_blob.h"
+#include "../TegraGM20BMetalCompileRequest.h"
+#include "../TegraGM20BMetalPipelineKey.h"
+#include "../buffer_encoders.h"
+#include "../compute_facts_entry.h"
+#include "../function_attributes.h"
+#include "../reflection_blob.h"
 #include "../translate/NativeMetalTranslate.h"
 
 namespace switch_compiler {
 namespace {
 
 // The AIR slice of the library `l` names: a system library's file under `root` (`held` keeps its mapping), else its bytes
-bool airSliceOf(const raw::RequestLibrary &l, const std::string &root, NSData *__strong &held, const uint8_t *&slice,
+bool airSliceOf(const gm20b::RequestLibrary &l, const std::string &root, NSData *__strong &held, const uint8_t *&slice,
                 size_t &size, std::string &why)
 {
     const uint8_t *file = reinterpret_cast<const uint8_t *>(l.bytes.data());
@@ -43,13 +43,13 @@ bool airSliceOf(const raw::RequestLibrary &l, const std::string &root, NSData *_
     return true;
 }
 
-// The constants as the translator takes them, indexed then named (raw/runtime/RawOffline.mm)
+// The constants as the translator takes them, indexed then named (TegraGM20BMetalOffline.mm)
 bool constantsOf(MTLFunctionConstantValues *values, std::vector<NmbConstant> &out, std::string &why)
 {
     NSArray *indexed = [values newIndexedConstantArray], *named = [values newNamedConstantArray];
     for (unsigned group = 0; group < 2; group++)
-        for (id<RMConstantValue> v in (group ? named : indexed)) {
-            const uint64_t bytes = raw::constantBytes(v.dataType);
+        for (id<SwitchMetalConstantValue> v in (group ? named : indexed)) {
+            const uint64_t bytes = gm20b::constantBytes(v.dataType);
             if (!bytes || !v.data)
                 return why = "a constant of type " + std::to_string(uint64_t(v.dataType)) + " it cannot pass", false;
             out.push_back({v.dataType, group ? 0 : v.index, group ? v.name.UTF8String : nullptr, v.data, bytes});
@@ -57,7 +57,7 @@ bool constantsOf(MTLFunctionConstantValues *values, std::vector<NmbConstant> &ou
     return true;
 }
 
-NmbOfflineFunction *functionOf(const NmbOfflineLibrary *library, const raw::RequestStage &s,
+NmbOfflineFunction *functionOf(const NmbOfflineLibrary *library, const gm20b::RequestStage &s,
                                std::vector<NmbConstant> &constants, MTLFunctionConstantValues *__strong &values,
                                std::string &why)
 {
@@ -68,7 +68,7 @@ NmbOfflineFunction *functionOf(const NmbOfflineLibrary *library, const raw::Requ
                    ? nmb_offline_function_new(library, s.function.c_str())
                    : nmb_offline_function_new_specialized(library, s.function.c_str(), s.name.c_str(), nullptr, 0);
     }
-    if (!(values = raw::constantValuesOf(s.constants)))
+    if (!(values = gm20b::constantValuesOf(s.constants)))
         return why = "constants it cannot read: " + s.constants, nullptr;
     if (!constantsOf(values, constants, why))
         return nullptr;
@@ -78,13 +78,13 @@ NmbOfflineFunction *functionOf(const NmbOfflineLibrary *library, const raw::Requ
 }
 
 // vertexAttributes (`stageInput` false) or stageInputAttributes as the translator answers them; nullopt for nil
-raw::AttributeList attributesOf(const NmbOfflineFunction *f, bool stageInput)
+gm20b::AttributeList attributesOf(const NmbOfflineFunction *f, bool stageInput)
 {
     const int64_t count = stageInput ? nmb_offline_function_stage_input_attribute_count(f)
                                      : nmb_offline_function_vertex_attribute_count(f);
     if (count < 0)
         return std::nullopt;
-    std::vector<raw::FunctionAttributeTag> out;
+    std::vector<gm20b::FunctionAttributeTag> out;
     for (uint32_t i = 0; i < uint32_t(count); i++) {
         char name[256];
         uint64_t info[5] = {};
@@ -92,7 +92,7 @@ raw::AttributeList attributesOf(const NmbOfflineFunction *f, bool stageInput)
                                         : nmb_offline_function_vertex_attribute(f, i, name, sizeof name, info);
         if (!named)
             return std::nullopt;
-        raw::FunctionAttributeTag a;
+        gm20b::FunctionAttributeTag a;
         a.name = name;
         a.index = uint8_t(info[0]);
         a.type = uint8_t(info[1]);
@@ -104,11 +104,11 @@ raw::AttributeList attributesOf(const NmbOfflineFunction *f, bool stageInput)
     return out;
 }
 
-// The stage input as the offline descriptor takes it (raw/runtime/RawOffline.mm computeDescriptor)
-void stageInputOf(const raw::StageInFields &in, NmbOfflineComputePipelineDescriptor &d)
+// The stage input as the offline descriptor takes it (TegraGM20BMetalOffline.mm computeDescriptor)
+void stageInputOf(const gm20b::StageInFields &in, NmbOfflineComputePipelineDescriptor &d)
 {
     for (uint32_t i = 0; i < 31; ++i) {
-        const raw::AttributeFields &a = in.attributes[i];
+        const gm20b::AttributeFields &a = in.attributes[i];
         if (!a.format)
             continue;
         d.stage_inputs = 1;
@@ -136,11 +136,11 @@ public:
                 nmb_offline_library_release(l);
     }
 
-    bool make(const raw::CompileRequest &r, const std::string &root, std::string &why)
+    bool make(const gm20b::CompileRequest &r, const std::string &root, std::string &why)
     {
         libraries_.assign(r.libraries.size(), nullptr);
         held_.resize(r.libraries.size());
-        for (const raw::RequestStage &s : r.stages) {
+        for (const gm20b::RequestStage &s : r.stages) {
             NmbOfflineLibrary *&library = libraries_[s.library];
             if (!library) {
                 const uint8_t *slice = nullptr;
@@ -180,17 +180,17 @@ private:
 bool collectEncoder(uint32_t index, bool argumentBuffer, const NmbArgumentLayout *layouts, uint32_t count,
                     const char *refusal, void *ctx)
 {
-    static_assert(sizeof(raw::ArgumentRun) == sizeof(NmbArgumentRun), "the bridge's runs");
-    raw::BufferEncoder e;
+    static_assert(sizeof(gm20b::ArgumentRun) == sizeof(NmbArgumentRun), "the bridge's runs");
+    gm20b::BufferEncoder e;
     e.index = index;
     e.argumentBuffer = argumentBuffer;
     e.refusal = refusal ? refusal : "";
     for (uint32_t i = 0; i < count; i++) {
-        const auto *runs = reinterpret_cast<const raw::ArgumentRun *>(layouts[i].runs);
+        const auto *runs = reinterpret_cast<const gm20b::ArgumentRun *>(layouts[i].runs);
         e.layouts.push_back({layouts[i].encoded_length, layouts[i].alignment,
-                             std::vector<raw::ArgumentRun>(runs, runs + layouts[i].run_count)});
+                             std::vector<gm20b::ArgumentRun>(runs, runs + layouts[i].run_count)});
     }
-    static_cast<raw::BufferEncoders *>(ctx)->push_back(std::move(e));
+    static_cast<gm20b::BufferEncoders *>(ctx)->push_back(std::move(e));
     return true;
 }
 
@@ -202,12 +202,12 @@ int32_t makeBufferEncoders(const Prepared &p, const std::string &systemRoot, std
         OfflineStages stages;
         if (!stages.make(p.request, systemRoot, why))
             return TegraGM20BCompileUnavailable;
-        raw::BufferEncoders encoders;
+        gm20b::BufferEncoders encoders;
         const bool made = nmb_offline_function_buffer_encoders(stages.function(0), collectEncoder, &encoders);
         if (!made)
             why = "the translator does not decode " + p.request.stages[0].function + ": " + nmb_last_error();
-        const std::string blob = raw::encodeBufferEncoders(encoders);
-        entry = raw::encodeReflectionEntry(p.key, made ? &blob : nullptr, why);
+        const std::string blob = gm20b::encodeBufferEncoders(encoders);
+        entry = gm20b::encodeReflectionEntry(p.key, made ? &blob : nullptr, why);
         return made ? TegraGM20BCompileMade : TegraGM20BCompileRefused;
     }
 }
@@ -219,8 +219,9 @@ int32_t makeAttributes(const Prepared &p, const std::string &systemRoot, std::st
         if (!stages.make(p.request, systemRoot, why))
             return TegraGM20BCompileUnavailable;
         const NmbOfflineFunction *function = stages.function(0);
-        const std::string blob = raw::encodeAttributeLists(attributesOf(function, false), attributesOf(function, true));
-        entry = raw::encodeReflectionEntry(p.key, &blob, why);
+        const std::string blob =
+            gm20b::encodeAttributeLists(attributesOf(function, false), attributesOf(function, true));
+        entry = gm20b::encodeReflectionEntry(p.key, &blob, why);
         return TegraGM20BCompileMade;
     }
 }
@@ -240,12 +241,12 @@ int32_t makeFacts(const Prepared &p, const std::string &systemRoot, std::string 
                     if (p.request.stages[i].tag == "kg")
                         groupNames.push_back({p.request.stages[i].group.data(), p.request.stages[i].group.size()});
                 }
-        const size_t visible =
-            size_t(std::count_if(p.request.stages.begin() + 1, p.request.stages.end(), [](const raw::RequestStage &s) {
+        const size_t visible = size_t(
+            std::count_if(p.request.stages.begin() + 1, p.request.stages.end(), [](const gm20b::RequestStage &s) {
                 return s.tag == "kl";
             }));
-        const size_t hidden =
-            size_t(std::count_if(p.request.stages.begin() + 1, p.request.stages.end(), [](const raw::RequestStage &s) {
+        const size_t hidden = size_t(
+            std::count_if(p.request.stages.begin() + 1, p.request.stages.end(), [](const gm20b::RequestStage &s) {
                 return s.tag == "kp";
             }));
         NmbOfflineComputePipelineDescriptor d = {};
@@ -266,7 +267,7 @@ int32_t makeFacts(const Prepared &p, const std::string &systemRoot, std::string 
         const bool made = nmb_offline_compute_pipeline_facts(&d, facts);
         if (!made)
             why = std::string("no compute prepare: ") + nmb_last_error();
-        entry = raw::encodeFactsEntry(p.key, made ? facts : nullptr, why);
+        entry = gm20b::encodeFactsEntry(p.key, made ? facts : nullptr, why);
         return made ? TegraGM20BCompileMade : TegraGM20BCompileRefused;
     }
 }

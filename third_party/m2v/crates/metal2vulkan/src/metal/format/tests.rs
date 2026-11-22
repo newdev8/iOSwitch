@@ -2162,8 +2162,8 @@ fn explicit_imageblock_sample_lengths_are_metals() {
 /// [`ycbcr_format`] describes exactly the 69 two-plane YCbCr formats, each as its Metal name
 /// states (`MTLPixelFormat{YCBCR|RGB}{bits}_{420|422|444}_2P[_PACKED][_{sRGB|PQ|HLG|XR}]`), and
 /// this crate holds a texture of the ones of unpacked 8- and 10-bit codes read converted, through
-/// the sRGB curve or as codes, and of packed 10-bit codes read converted or through the sRGB
-/// curve, whose texels read three channels and alpha 1.
+/// the sRGB curve or as codes, and of packed 10-bit codes read converted, through the sRGB curve
+/// or as codes, whose texels read three channels and alpha 1.
 #[test]
 fn ycbcr_formats_are_the_two_plane_family_as_named() {
     let mut described = 0;
@@ -2242,6 +2242,9 @@ fn ycbcr_formats_are_the_two_plane_family_as_named() {
                 | PixelFormat::YCBCR104202PPACKEDSRGB
                 | PixelFormat::YCBCR104222PPACKEDSRGB
                 | PixelFormat::YCBCR104442PPACKEDSRGB
+                | PixelFormat::RGB104202PPACKED
+                | PixelFormat::RGB104222PPACKED
+                | PixelFormat::RGB104442PPACKED
         );
         assert_eq!(ycbcr(pf), held, "{name}");
         assert_eq!(
@@ -2309,7 +2312,10 @@ fn a_pass_renders_only_the_ycbcr_formats_whose_store_is_matched() {
             P::YCBCR104442PPACKED,
             P::YCBCR104202PPACKEDSRGB,
             P::YCBCR104222PPACKEDSRGB,
-            P::YCBCR104442PPACKEDSRGB
+            P::YCBCR104442PPACKEDSRGB,
+            P::RGB104202PPACKED,
+            P::RGB104222PPACKED,
+            P::RGB104442PPACKED
         ]
     );
     for (stem, dev) in committed_devices() {

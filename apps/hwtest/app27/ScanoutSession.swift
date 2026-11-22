@@ -102,7 +102,9 @@ final class ScanoutSession {
                 sequence: GPUConnection.uint64(reply, 32),
                 previous: flags & Self.previousFlag != 0 ? GPUConnection.uint32(reply, 28) : nil,
                 direct: flags & 1 != 0, width: width, height: height, first: mapped!.0.base, second: mapped!.1.base,
-                ticks: ticks))
+                ticks: ticks
+            )
+        )
     }
 
     /// Arms the read-back for the next present (the same buffers: the mappings stay).

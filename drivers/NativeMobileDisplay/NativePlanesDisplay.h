@@ -106,8 +106,8 @@ static const tgm_layout *surfaceLayout(OSObject *surface, tgm_layout &block)
 // --- IOVA slots ---------------------------------------------------------------------------------------------------------
 bool planeSlotBusy(int k) const
 {
-    if (planeRecovering || ((planeBuildingSlots | mediaHostHeldSlots) & (uint64_t(1) << unsigned(k))) ||
-        planeConversionUses(k) || planeCompositeUses(k) || planeLatch.uses(k) || planeTarget.uses(k) ||
+    if (planeRecovering || (planeBuildingSlots & (uint64_t(1) << unsigned(k))) || planeConversionUses(k) ||
+        planeCompositeUses(k) || planeLatch.uses(k) || planeTarget.uses(k) ||
         (landscapeState.wanted && landscapeState.held.uses(k)) || (planeFencePending && planeFencing.uses(k)) ||
         (planeNextSet && planeNext.uses(k)) || (planeHeldSet && planeHeld.uses(k)))
         return true;
@@ -273,7 +273,6 @@ void stopPlanes()
     gPanicRestore.planes = false;
     __atomic_store_n(&planesOn, false, __ATOMIC_RELEASE);
     planeLatch.reset();
-    mediaHostHeldSlots = 0;
     planeRecovering = planeRecoveryStuck = false;
     planeRecoveryTarget = {};
     planeTarget = {};

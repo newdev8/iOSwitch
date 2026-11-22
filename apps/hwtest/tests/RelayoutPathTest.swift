@@ -50,7 +50,7 @@ struct RelayoutPathTest: GPUPathTest {
     }
 
     static func pattern(_ seed: Int) -> [UInt8] {
-        (0..<(rowBytes * height)).map { UInt8(truncatingIfNeeded: ($0 &* 7) ^ ($0 >> 9) &+ seed &* 61) }
+        (0 ..< (rowBytes * height)).map { UInt8(truncatingIfNeeded: ($0 &* 7) ^ ($0 >> 9) &+ seed &* 61) }
     }
 
     static func surface() throws -> IOSurface {
@@ -66,19 +66,22 @@ struct RelayoutPathTest: GPUPathTest {
     static func blit(_ gpu: GPU, _ bytes: [UInt8], into surface: IOSurface, rows: Int) async throws {
         let source = try gpu.buffer(bytes)
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false)
+            pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false
+        )
         descriptor.usage = [.renderTarget, .shaderRead]
         descriptor.storageMode = .shared
         guard
             let target = gpu.device.makeTexture(
-                descriptor: descriptor, iosurface: unsafeBitCast(surface, to: IOSurfaceRef.self), plane: 0)
+                descriptor: descriptor, iosurface: unsafeBitCast(surface, to: IOSurfaceRef.self), plane: 0
+            )
         else { throw TestFailure("makeTexture(iosurface:) returned nil") }
         try await gpu.run { commands in
             let blit = commands.makeBlitCommandEncoder()!
             blit.copy(
                 from: source, sourceOffset: 0, sourceBytesPerRow: rowBytes, sourceBytesPerImage: rowBytes * rows,
                 sourceSize: MTLSize(width: width, height: rows, depth: 1), to: target, destinationSlice: 0,
-                destinationLevel: 0, destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0))
+                destinationLevel: 0, destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0)
+            )
             blit.endEncoding()
         }
     }

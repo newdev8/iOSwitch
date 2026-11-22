@@ -206,11 +206,13 @@ rust_test(
 )
 
 # ios-on-switch-lmao: two-plane YCbCr reads converted from their surfaces (bind/ycbcr_convert.rs), the packed 10-bit
-# code formats with them. The profile sweep runs in validation; this target checks the native conversion.
+# code formats with them, and the formats the crate holds a texture of. The profile sweep runs in validation; this
+# target checks the native conversion.
 rust_test(
     name = "ycbcr_convert_test",
     args = [
         "bind::ycbcr_convert::",
+        "metal::format::tests::ycbcr_formats_are_the_two_plane_family_as_named",
         "--skip",
         "the_ycbcr_conversion_kernels_are_valid_on_every_committed_profile",
     ],
@@ -267,6 +269,26 @@ rust_test(
 rust_test(
     name = "kernel_planes_test",
     args = ["tests::engine_extended_range::kernel_planes::"],
+    compile_data = glob(["tests/**"]),
+    crate = ":metal2vulkan",
+    data = [
+        "@gpu_llvm_as//:bin/llvm-as",
+        "@spirv_tools//:spirv-dis",
+        "@spirv_tools//:spirv-val",
+    ],
+    env = {
+        "METAL2VULKAN_LLVM_AS": "$(rootpath @gpu_llvm_as//:bin/llvm-as)",
+        "METAL2VULKAN_SPIRV_DIS": "$(rootpath @spirv_tools//:spirv-dis)",
+        "METAL2VULKAN_SPIRV_VAL": "$(rootpath @spirv_tools//:spirv-val)",
+    },
+    deps = ["//third_party/m2v/crates/metal2vulkan-devtools"],
+)
+
+# An RGB10A8_2P_XR10 texture buffer as its colour words alone: the binder's R32_UINT view, and stores and reads against
+# Apple's bytes (src/tests/engine_extended_range/planes_m4.txt)
+rust_test(
+    name = "texel_buffer_words_test",
+    args = ["tests::engine_extended_range::texel_buffer_words::"],
     compile_data = glob(["tests/**"]),
     crate = ":metal2vulkan",
     data = [

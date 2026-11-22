@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
-//! The raw GM20B path's direct compile of a render state (NativeMetalDirect.h): what m2v's translator makes of the
-//! state for each of the pack generator's probe draws (drivers/TegraGM20BMetal/raw/pack/probe.mm), with no pipeline
+//! The driver's direct compile of a render state (NativeMetalDirect.h): what m2v's translator makes of the
+//! state for each of the pack generator's probe draws (drivers/TegraGM20BMetal/pack/probe.mm), with no pipeline
 //! state, command buffer or capture. Only the translator's public API is used. A runtime device lends its compile
 //! device and its Vulkan device, on which the variants' layouts are made too; the offline compile (the pack
 //! generator's, and the system shader compiler's compile context: NativeMetalCompile.rs) runs on the compile profile's
@@ -18,8 +18,8 @@ use metal2vulkan::bind::{
 use metal2vulkan::cache::VariantKey;
 use metal2vulkan::error::{BindError, Retry};
 use metal2vulkan::metal::{
-    PixelFormat, SamplerAddressMode, SamplerBorderColor, SamplerMinMagFilter, SamplerMipFilter, TextureType,
-    TextureUsage,
+    PixelFormat, SamplerAddressMode, SamplerBorderColor, SamplerMinMagFilter, SamplerMipFilter, TextureSwizzleChannels,
+    TextureType, TextureUsage, VertexStepFunction,
 };
 use metal2vulkan::pipeline::{
     BindingSource, GraphicsState, PipelineLayout, PushField, RenderPipeline, RenderPipelineDescriptor, RuntimeFact,
@@ -33,22 +33,22 @@ const PROBE_SLOTS: u32 = 31;
 const PROBE_TAGGED: u32 = 16;
 const RUN_BYTES: [u32; 4] = [256, 16, 4096, 256];
 const BOUND_RUN: usize = 3;
-/// A render stage's Metal arguments on this identity (raw_set_entries.h): 31 buffers, the A10X's 31 textures (21H461) or the
+/// A render stage's Metal arguments on this identity (set_entries.h): 31 buffers, the A10X's 31 textures (21H461) or the
 /// A13's 128 (24B119, `target_j181`), 16 samplers
 #[cfg(not(target_j181))]
 const STAGE_TEXTURES: usize = 31;
 #[cfg(target_j181)]
 const STAGE_TEXTURES: usize = 128;
 const STAGE_ARGUMENTS: usize = 31 + STAGE_TEXTURES + 16;
-/// raw_set_entries.h kSyntheticEntries: the colour table, the handle and argument tables, the tessellation buffers, the
+/// set_entries.h kSyntheticEntries: the colour table, the handle and argument tables, the tessellation buffers, the
 /// depth and stencil stand-ins, and each colour's fetch and extended-range shadow
 const SYNTHETIC_WRITES: usize = 1 + 4 + 2 + 3 + 2 + 8 + 8;
 /// The set-0 writes a state's record holds at most: every argument one render pipeline binds, and every synthetic entry
 const MAX_WRITES: usize = 2 * STAGE_ARGUMENTS + SYNTHETIC_WRITES;
 pub const HEAP_ARRAYS: usize = 8;
-/// The raw path's texture header pool (raw_heap_tables.h kHeapElements): its heap holds texture header i and sampler header
+/// The driver's texture header pool (heap_tables.h kHeapElements): its heap holds texture header i and sampler header
 /// i at element i, so no array needs more elements
-pub const RAW_HEAP_ELEMENTS: u32 = 8192;
+pub const SWITCH_METAL_HEAP_ELEMENTS: u32 = 8192;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -220,7 +220,7 @@ pub struct NmbDirectDraw {
     pub vertex_slot: u32,
     pub vertex_stride: u32,
     pub vertex_stride_dynamic: u32,
-    pub pulled_strides: [[u32; 2]; 4],
+    pub pulled_strides: [[u32; 2]; 8],
     pub amplification_max: u32,
     pub amplification_id_word: u32,
     pub amplification_count_word: u32,
@@ -385,7 +385,7 @@ fn storage_of(graphics: &GraphicsState) -> Result<NmbDirectStorage, String> {
         }
         storage.mask |= 1 << index;
         // A write the pipeline's mask leaves no channel of stores nothing: the colour is only read, so its draws need
-        // no more than a barrier (describeReads' rung, raw_storage_form.h fetchesOnlyUnwritten)
+        // no more than a barrier (describeReads' rung, storage_form.h fetchesOnlyUnwritten)
         storage.writes |= u32::from(attachment.stores()) << index;
         storage.sample_planes |=
             u32::from(matches!(attachment.view, StorageAttachmentView::SamplePlanes { .. })) << index;
@@ -579,6 +579,25 @@ fn declared_facts(t: &TextureSlot, own: Option<PixelFormat>, format: PixelFormat
     facts
 }
 
+/// What the probe binds at a slot of `texture_type` whose facts are `facts` (`declared_facts`): a texture buffer at a
+/// texture-buffer slot, whose view raw binds is the texture's own header (Device::createTexelBuffer), not this range
+fn declared_texture(texture_type: TextureType, facts: TextureFacts) -> BoundTexture {
+    match texture_type {
+        TextureType::TextureBuffer => BoundTexture::Buffer {
+            pixel_format: facts.pixel_format,
+            offset: 0,
+            length: 4096,
+            bytes_per_row: 4096,
+            resource_id: None,
+            swizzle: TextureSwizzleChannels::default(),
+        },
+        _ => BoundTexture::Texture {
+            facts,
+            resource_id: None,
+        },
+    }
+}
+
 /// The probe's address of a buffer at slot `slot` of `stage` (1 vertex, 2 fragment)
 fn probe_address(stage: u32, slot: u32) -> u64 {
     0x1_0000_0000u64 + (u64::from(stage) << 24) + (u64::from(slot) << 16)
@@ -604,7 +623,7 @@ fn probe_state(
 ) -> BindState {
     let mut state = BindState::default();
     state.render_target_array_length = layers;
-    // One draw per amplification, which the raw path draws in order, under mappings that offset the viewport (with `layers`
+    // One draw per amplification, which the driver draws in order, under mappings that offset the viewport (with `layers`
     // 2, a layered pass): its vertex program writes each amplification's layer and viewport from its offset words
     if amplification > 1 {
         let mappings = (0..amplification).map(|a| ViewMapping::new(1, a)).collect();
@@ -669,10 +688,7 @@ fn probe_state(
         {
             table.textures.insert(
                 *t,
-                BoundTexture::Texture {
-                    facts: declared_facts(d, own_format(*t), format, samples),
-                    resource_id: None,
-                },
+                declared_texture(d.texture_type, declared_facts(d, own_format(*t), format, samples)),
             );
         }
         if stage == Stage::Vertex {
@@ -692,13 +708,7 @@ fn probe_state(
                     facts.sample_count = samples;
                     facts.usage |= TextureUsage::RENDER_TARGET;
                 }
-                table.textures.insert(
-                    t,
-                    BoundTexture::Texture {
-                        facts,
-                        resource_id: None,
-                    },
-                );
+                table.textures.insert(t, declared_texture(facts.texture_type, facts));
                 let cubic = binds.cubic_at(Stage::Fragment, t);
                 table
                     .samplers
@@ -722,6 +732,7 @@ fn probed_format(state: &BindState, w: &NmbDirectWrite) -> u32 {
         .and_then(|table| table.textures.get(&w.slot))
     {
         Some(BoundTexture::Texture { facts, .. }) => facts.pixel_format.as_raw(),
+        Some(BoundTexture::Buffer { pixel_format, .. }) => pixel_format.as_raw(),
         _ => 0,
     }
 }
@@ -818,14 +829,14 @@ pub fn write_of(w: &metal2vulkan::bind::DescriptorWrite, ranges: &[DescriptorRan
                 StorageAttachmentView::SamplePlanes { .. } => avk::ImageViewType::TYPE_2D_ARRAY.as_raw(),
             };
         }
-        // the pass's half shadow of an extended-range colour (raw_xr_shadow.h), bound by the colour's index
+        // the pass's half shadow of an extended-range colour (xr_shadow.h), bound by the colour's index
         WriteSource::ExtendedShadow { color_index } => {
             out.source = NmbDirectSource::ExtendedShadow;
             out.stage = 2;
             out.slot = *color_index;
             out.view_type = avk::ImageViewType::TYPE_2D.as_raw();
         }
-        // the shader-side stencil's shadow is the raw path's stencil stand-in (raw_shader_test_push.h shadowStencil)
+        // the shader-side stencil's shadow is the driver's stencil stand-in (shader_test_push.h shadowStencil)
         WriteSource::DepthStandIn | WriteSource::StencilStandIn | WriteSource::ShadowStencil => {
             out.source = if matches!(w.source, WriteSource::DepthStandIn) {
                 NmbDirectSource::DepthStandIn
@@ -900,7 +911,7 @@ fn table_of(mut write: NmbDirectWrite, layout: &PipelineLayout) -> NmbDirectWrit
 }
 
 /// The neutral m2v binds at a shader-side stencil's shadow in a pass without a stencil attachment, which the function never
-/// reads: the raw path's stencil stand-in binding, empty in such a pass
+/// reads: the driver's stencil stand-in binding, empty in such a pass
 fn shadow_of(mut write: NmbDirectWrite, layout: &PipelineLayout) -> NmbDirectWrite {
     let shadow = layout
         .sets
@@ -950,8 +961,8 @@ pub fn spill_table(plan: &BindingPlan, bytes: &[DescriptorBytes], stage: Stage) 
         })
 }
 
-/// A SlotBindOffset residual the plan places where a record holds no word for it (raw_pack.h bufferResidualWord: 6
-/// bits), so the direct compile refuses the state (raw_direct.cpp spillTables) where a record without the word would
+/// A SlotBindOffset residual the plan places where a record holds no word for it (pack.h bufferResidualWord: 6
+/// bits), so the direct compile refuses the state (direct.cpp spillTables) where a record without the word would
 /// refuse every draw that binds the slot off its base alignment
 pub(crate) const UNNAMED_RESIDUAL: u8 = u8::MAX;
 
@@ -1005,14 +1016,14 @@ fn immutable_samplers(layout: &PipelineLayout, written: &[NmbDirectWrite]) -> Ve
     out
 }
 
-/// The stages of a hole's flags as raw_direct.cpp numbers them: bit 0 Metal's vertex stage (a tessellation state's is
+/// The stages of a hole's flags as direct.cpp numbers them: bit 0 Metal's vertex stage (a tessellation state's is
 /// its evaluation stage, which reads the vertex stage's buffers), bit 1 fragment
 fn hole_stages(stages: metal2vulkan::vk::ShaderStageFlags) -> u32 {
     use metal2vulkan::vk::ShaderStageFlags as S;
     u32::from(stages.intersects(S::VERTEX | S::TESSELLATION_EVALUATION)) | u32::from(stages.contains(S::FRAGMENT)) << 1
 }
 
-/// The holes of `commands` the raw path fills into `draw` (each stage's root-table and ExecutionStatus address, as push word
+/// The holes of `commands` the driver fills into `draw` (each stage's root-table and ExecutionStatus address, as push word
 /// + 1), the others counted; and the buffer slots each stage's root table holds an entry for, as the bound run names them
 fn holes_of(commands: &DrawCommands, draw: &mut NmbDirectDraw) -> Result<(), String> {
     for hole in &commands.push_holes {
@@ -1357,7 +1368,7 @@ fn draw_of(
         vertex_slot: u32::MAX,
         vertex_stride: 0,
         vertex_stride_dynamic: 0,
-        pulled_strides: [[0; 2]; 4],
+        pulled_strides: [[0; 2]; 8],
         amplification_max: amplification,
         amplification_id_word: 0,
         amplification_count_word: 0,
@@ -1398,7 +1409,7 @@ fn draw_of(
             PushField::ViewportCount => (&mut draw.viewport_count_word, 4),
             _ => continue,
         };
-        // a field past the window is a word of the fragment stage's argument table: raw_spill_table.h numbers it from 32
+        // a field past the window is a word of the fragment stage's argument table: spill_table.h numbers it from 32
         let (offset, first, end) = match field.location {
             FieldLocation::PushWindow { offset } => (offset, 0, 128),
             FieldLocation::ArgumentTable { offset } if field.stage == Stage::Fragment => {
@@ -1407,7 +1418,7 @@ fn draw_of(
             FieldLocation::ArgumentTable { .. } => {
                 return Err("a vertex stage's dynamic state in its argument table".into());
             }
-            _ => return Err("dynamic state at a push location the raw path does not know".into()),
+            _ => return Err("dynamic state at a push location the driver does not know".into()),
         };
         if field.size != bytes || offset % 4 != 0 || offset > end.saturating_sub(bytes) {
             return Err("invalid dynamic state push placement".into());
@@ -1474,13 +1485,23 @@ fn dynamic_words(run: &Run, pipeline: &RenderPipeline, draw: &mut NmbDirectDraw)
                     .any(|a| a.buffer_index == layout && a.stride == VertexStride::PerBind) =>
             {
                 if pulled == draw.pulled_strides.len() {
-                    return Err("more than four pulled vertex buffers of a dynamic stride".into());
+                    return Err("more than eight pulled vertex buffers of a dynamic stride".into());
                 }
                 draw.pulled_strides[pulled] = [layout, word];
                 pulled += 1;
             }
             _ => {}
         }
+    }
+    let dynamic: std::collections::BTreeSet<u32> = pipeline
+        .vertex_input
+        .pulled
+        .iter()
+        .filter(|a| a.stride == VertexStride::PerBind && a.step_function != VertexStepFunction::Constant)
+        .map(|a| a.buffer_index)
+        .collect();
+    if pulled != dynamic.len() {
+        return Err("a pulled vertex buffer of a dynamic stride whose stride word is past the root push window".into());
     }
     Ok(())
 }
@@ -1862,7 +1883,44 @@ pub fn translate(
 
 #[cfg(test)]
 mod tests {
-    use super::{MAX_WRITES, STAGE_TEXTURES, hole_stages, set0_writes_fit};
+    use super::{
+        BindState, BoundTexture, MAX_WRITES, NmbDirectSource, NmbDirectWrite, PixelFormat, STAGE_TEXTURES, Stage,
+        StageTable, TextureFacts, TextureType, declared_texture, hole_stages, probed_format, set0_writes_fit,
+    };
+
+    // A fragment function's texture-buffer argument is probed as a texture buffer of its format, whose view the binder
+    // plans (a texture of the TextureBuffer type has none: "no view type"), and a storage write into it keeps the format
+    // its stores are compiled for (PackPipeline::writtenFormat); a 2D argument stays a texture
+    #[test]
+    fn a_texture_buffer_argument_is_probed_as_a_texture_buffer_of_its_format() {
+        let xr = PixelFormat::RGB10A82PXR10;
+        let mut table = StageTable::default();
+        for (slot, ty) in [(3, TextureType::TextureBuffer), (4, TextureType::Type2D)] {
+            table
+                .textures
+                .insert(slot, declared_texture(ty, TextureFacts::new(ty, xr)));
+        }
+        assert!(matches!(table.textures[&3], BoundTexture::Buffer { pixel_format, .. } if pixel_format == xr));
+        assert!(matches!(table.textures[&4], BoundTexture::Texture { .. }));
+        let mut state = BindState::default();
+        state.stages.insert(Stage::Fragment, table);
+        let write = |slot| NmbDirectWrite {
+            set: 0,
+            binding: 0,
+            element: 0,
+            ty: 5,
+            source: NmbDirectSource::Texture,
+            stage: 2,
+            slot,
+            sampler: 0,
+            range: 0,
+            view_type: 0,
+            format: 0,
+            compare: 0,
+        };
+        assert_eq!(probed_format(&state, &write(3)), 550);
+        assert_eq!(probed_format(&state, &write(4)), 550);
+    }
 
     #[test]
     fn a_states_writes_reach_every_argument_of_its_identity_and_its_synthetic_entries() {

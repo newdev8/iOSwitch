@@ -1876,7 +1876,7 @@ pub(super) fn value(
         }
         (None, Some(_)) if packed::is_packed(sc.view.format) => {
             let word = fb.composite_extract(texel, &[0])?;
-            packed::decode(fb, sc.view.format, word)?
+            packed::decode(cx, fb, sc.view.format, word, Some(c.form))?
         }
         (None, Some(_)) => {
             let Some(table) = cx.decl.families.arith.srgb else {

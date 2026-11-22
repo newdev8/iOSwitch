@@ -1750,8 +1750,8 @@ pub fn ycbcr_renders(pf: PixelFormat) -> bool {
 /// Whether `pf` is a packed 10-bit two-plane YCbCr format this crate holds ([`ycbcr`]), whose
 /// pipeline a color attachment of is made ([`FormatEmulation::YCbCrPassRefused`]) and whose
 /// render pass the runtime refuses at its start, `NotImplemented(Format)`: `YCBCR10_420_2P_PACKED`,
-/// `YCBCR10_422_2P_PACKED`, `YCBCR10_444_2P_PACKED` and their `_sRGB` twins (the code twins
-/// `RGB10_*_2P_PACKED` join once a texture of them is held). Metal makes the pipeline and fails
+/// `YCBCR10_422_2P_PACKED`, `YCBCR10_444_2P_PACKED`, their `_sRGB` twins and their code twins
+/// `RGB10_*_2P_PACKED` (whose passes are not measured). Metal makes the pipeline and fails
 /// the pass (EVs GSM2-pk1-m4 and GSM2-pk2-m4, an Apple M4 under macOS 27.0.1, a clear and a
 /// draw of each over its packed surface, 16 x 8, plain; the consumer's runs of the same probe on
 /// an Apple M3 Max under macOS 26.7): the command buffer ends in an error, `Hang` in most runs
@@ -1761,7 +1761,7 @@ pub fn ycbcr_renders(pf: PixelFormat) -> bool {
 /// the queue's later command buffers. No rule gives those bytes or that code, so no exact form
 /// exists: the runtime's refusal is its gap.
 pub fn ycbcr_pass_refused(pf: PixelFormat) -> bool {
-    // Held: read converted or through the sRGB curve (`bind::YCbCrCodes::of`).
+    // Held: read converted, through the sRGB curve or as codes (`bind::YCbCrCodes::of`).
     ycbcr_format(pf)
         .is_some_and(|f| f.packed && f.bits == 10 && crate::bind::YCbCrCodes::of(f).is_some())
 }

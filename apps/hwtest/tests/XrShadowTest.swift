@@ -3,15 +3,15 @@ import HWTestCore
 import HWTestGPU
 import Metal
 
-/// An extended-range colour's half shadow (raw_xr_shadow.h): Metal's tile holds a BGR10_XR or BGRA10_XR colour as half
+/// An extended-range colour's half shadow (xr_shadow.h): Metal's tile holds a BGR10_XR or BGRA10_XR colour as half
 /// through a pass, so a blend over an earlier draw of the pass (or over a clear its codes cannot hold) reads that half, where
 /// a pass without the shadow reads the stored codes. Each case runs one pass (a write then a blend, a clear then a blend, or
-/// one blended state drawn twice) and hashes the target's bytes against an M4 Max's (raw/test/xrshadoworacle.mm): wrong= the
+/// one blended state drawn twice) and hashes the target's bytes against an M4 Max's (harness/xrshadoworacle.mm): wrong= the
 /// cases off it. split_moved= how many texels the same draws split into two passes change on this device (what a pass
 /// without the shadow draws; the M4 Max: 670, 328, 679, 808, 328, 835): a 0 beside a wrong case is a missing shadow, a count
 /// near the M4 Max's a blend off Metal's. Every command buffer raw.
 struct XrShadowTest: HWTest {
-    let id = "gpu.raw.xr_shadow"
+    let id = "gpu.gm20b.xr_shadow"
     let name = "Blends over an earlier draw of an extended-range pass read the tile's half, as Metal's do, on raw"
     let subsystem = Subsystem.metal
     var timeout: TimeInterval { 60 }
@@ -42,8 +42,8 @@ struct XrShadowTest: HWTest {
 
     func run(_ context: TestContext) async throws -> Outcome {
         let probe = try GPU.make()
-        guard RawFacade.kind(of: probe.device) == "raw" else {
-            return .skip("the default device is not the raw facade (\(RawFacade.kind(of: probe.device)))")
+        guard GM20BFacade.kind(of: probe.device) == "gm20b" else {
+            return .skip("the default device is not the facade (\(GM20BFacade.kind(of: probe.device)))")
         }
         var metrics = Metrics()
         var checks: [(String, Bool)] = []
@@ -62,7 +62,7 @@ struct XrShadowTest: HWTest {
                 note = "failed: \(GPU.describe(error))"
             }
             for (path, count) in gpu.paths.paths { paths[path, default: 0] += count }
-            let raw = !gpu.paths.isEmpty && gpu.paths.paths.keys.allSatisfy { $0 == "raw" }
+            let raw = !gpu.paths.isEmpty && gpu.paths.paths.keys.allSatisfy { $0 == "gm20b" }
             let ok = note == nil && Self.hash(whole) == c.metal
             if !ok { wrong.append(c.key) }
             moved.append("\(Self.texelsMoved(whole, split, c.bytes))")
@@ -70,7 +70,7 @@ struct XrShadowTest: HWTest {
             if let note { check += " (\(note))" }
             checks.append((check, ok && raw))
         }
-        metrics.set("route", paths.keys.sorted() == ["raw"] ? "raw" : paths.keys.sorted().joined(separator: "+"))
+        metrics.set("route", paths.keys.sorted() == ["gm20b"] ? "gm20b" : paths.keys.sorted().joined(separator: "+"))
         metrics.set("wrong", wrong.isEmpty ? "-" : wrong.joined(separator: ","))
         metrics.set("split_moved", moved.joined(separator: ","))
         return .judged(checks, metrics, proof: probe.proof)
@@ -81,13 +81,15 @@ struct XrShadowTest: HWTest {
         let (w, h) = (Self.width, Self.height)
         guard let format = MTLPixelFormat(rawValue: c.format) else { throw TestFailure("no format") }
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: format, width: w, height: h, mipmapped: false)
+            pixelFormat: format, width: w, height: h, mipmapped: false
+        )
         descriptor.usage = [.renderTarget]
         descriptor.storageMode = .shared
         guard let texture = gpu.device.makeTexture(descriptor: descriptor) else { throw TestFailure("no texture") }
         let zero = [UInt8](repeating: 0, count: w * h * c.bytes)
         texture.replace(
-            region: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0, withBytes: zero, bytesPerRow: w * c.bytes)
+            region: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0, withBytes: zero, bytesPerRow: w * c.bytes
+        )
         let plain = try gpu.render(fragment: "texel_values", format: format)
         let blended = try gpu.render(fragment: "texel_values", format: format) {
             let a = $0.colorAttachments[0]!
@@ -147,7 +149,7 @@ struct XrShadowTest: HWTest {
             let u = Double(splitmix(&state) >> 11) / Double(UInt64(1) << 53)
             return Float(alpha ? u : u * 2.0 - 0.75)
         }
-        return (0..<(width * height)).map { _ in
+        return (0 ..< (width * height)).map { _ in
             let (r, g, b, a) = (next(false), next(false), next(false), next(true))
             return SIMD4(r, g, b, a)
         }
@@ -161,6 +163,6 @@ struct XrShadowTest: HWTest {
 
     static func texelsMoved(_ a: [UInt8], _ b: [UInt8], _ bytes: Int) -> Int {
         guard a.count == b.count, !a.isEmpty else { return -1 }
-        return stride(from: 0, to: a.count, by: bytes).filter { a[$0..<$0 + bytes] != b[$0..<$0 + bytes] }.count
+        return stride(from: 0, to: a.count, by: bytes).filter { a[$0 ..< $0 + bytes] != b[$0 ..< $0 + bytes] }.count
     }
 }

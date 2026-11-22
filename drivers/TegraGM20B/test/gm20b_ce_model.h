@@ -67,6 +67,8 @@ struct CopyEngine {
 		else
 			ASSERT_TRUE((flags & 3u) == 1u || (flags & 3u) == 2u);
 		ASSERT_TRUE(flags & (1u << 2)) << "FLUSH_ENABLE";
+		if (!m[0x0418])  // a launch of no bytes (NVK's transfer wait) reads no remap components
+			return;
 		const bool remap = flags & (1u << 10);
 		const uint64_t in = uint64_t(m[0x0400]) << 32 | m[0x0404],
 			       out = uint64_t(m[0x0408]) << 32 | m[0x040c];

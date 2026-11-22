@@ -1205,7 +1205,7 @@ codec_struct! {
     }
     DirectArgumentUse { stage, gap }
     UnwrittenFragmentInputs { names, gap }
-    ReflectionBinding { name, binding_type, access, index, used, argument, kind }
+    ReflectionBinding { name, binding_type, access, index, used, argument, array_length, kind }
     BufferBinding { alignment, data_size, data_type, struct_type, pointer_type }
     ThreadgroupBinding { alignment, data_size }
     ObjectPayloadBinding { alignment, data_size }

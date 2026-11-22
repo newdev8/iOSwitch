@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
-//! The raw GM20B path's direct compile of a compute state at one dispatch shape (NativeMetalDirect.h): what m2v's
+//! The driver's direct compile of a compute state at one dispatch shape (NativeMetalDirect.h): what m2v's
 //! translator makes of the kernel for the three dispatches the pack's kernel probe ran
-//! (drivers/TegraGM20BMetal/raw/pack/kernels.py), with no pipeline state, command buffer or capture. Only the
+//! (drivers/TegraGM20BMetal/pack/kernels.py), with no pipeline state, command buffer or capture. Only the
 //! translator's public API is used. A runtime device lends its compile device and its Vulkan device, on which the
 //! variant's layout and samplers are made too; the offline compile (the pack generator's, and the compile context's:
 //! NativeMetalCompile.rs) runs on the compile profile's native device with the layout as data alone.
@@ -13,8 +13,9 @@ use crate::descriptors::{
 };
 use crate::direct::{
     HEAP_ARRAYS, Layout, NMB_DIRECT_IMMUTABLE, NmbDirectBinding, NmbDirectSamplerState, NmbDirectStage, NmbDirectWrite,
-    compile_error, residual_words, sampler_state, spill_table, write_of,
+    UNNAMED_RESIDUAL, compile_error, residual_words, sampler_state, spill_table, write_of,
 };
+use crate::kernel_textures::{TWO_PLANES, kernel_texture};
 use crate::offline::{Devices, NmbOfflineComputePipelineDescriptor, offline_devices};
 use ash::vk as avk;
 use metal2vulkan::Budget;
@@ -24,12 +25,11 @@ use metal2vulkan::bind::{
     WriteSource, heap_class_code,
 };
 use metal2vulkan::cache::VariantKey;
-use metal2vulkan::metal::format::{ChromaSubsampling, YCbCrReads, ycbcr_format};
 use metal2vulkan::metal::sampler::AddressModeMap;
 use metal2vulkan::metal::{PixelFormat, SamplerAddressMode, TextureSwizzleChannels, TextureType, TextureUsage};
 use metal2vulkan::pipeline::{
     BindingSource, ComputePipeline, ComputePipelineDescriptor, NativePipeline, NativeProgram, NativeRecord,
-    PipelineLayout, PushField, SamplerRef, SlotClass, Stage, StageSource,
+    PipelineLayout, PushField, SamplerRef, SlotClass, SlotInterface, Stage, StageSource, TextureAccess,
 };
 use std::ffi::{CString, c_void};
 use std::sync::Arc;
@@ -38,6 +38,8 @@ const SLOTS: u32 = 31;
 const TAG_BYTES: u32 = 4096;
 const MOVED_OFFSET: u64 = 256;
 const GRID: [u32; 3] = [3, 5, 2];
+// A format the translator drops a write-only slot's writes of (metal2vulkan format.rs `writes_dropped`: a 4:2:0 one)
+const WRITES_DROPPED: PixelFormat = PixelFormat::YCBCR84202P;
 
 #[repr(C)]
 pub struct NmbDirectBoundTexture {
@@ -98,7 +100,6 @@ pub struct NmbDirectKernel {
     pub bound_mask: u32,
     pub bound: [u32; 32],
     pub moved_same: bool,
-    pub bound_same: bool,
     pub region_word: i32,
     pub regions: u32,
     pub push_holes: u32,
@@ -125,7 +126,7 @@ pub struct NmbDirectKernel {
     pub stage_in_strides: [[u32; 2]; 4],
 }
 
-/// The kernel's reads through argument buffers the raw path fills (NativeMetalDirect.rs holes_of and heap_of for a draw): its
+/// The kernel's reads through argument buffers the driver fills (NativeMetalDirect.rs holes_of and heap_of for a draw): its
 /// root-table and ExecutionStatus address holes (push word + 1), the others counted, the buffer slots its root table holds
 /// an entry for as the bound dispatch names them, and its set 1's heap arrays
 fn arguments_of(
@@ -230,17 +231,6 @@ fn counted<'a, T>(items: *const T, count: u32) -> &'a [T] {
     unsafe { std::slice::from_raw_parts(items, count as usize) }
 }
 
-/// The address-mode map (address_maps.rs) of a texture of `pf` the raw path samples through an image it converts: a
-/// two-plane YCbCr format's
-fn converted_map(pf: PixelFormat) -> u8 {
-    ycbcr_format(pf).map_or(0, |y| {
-        address_maps::converted_map(
-            !matches!(y.subsampling, ChromaSubsampling::Chroma444),
-            matches!(y.reads, YCbCrReads::Codes),
-        )
-    })
-}
-
 /// Map `map` (address_maps.rs) as the translator's
 fn address_modes(map: u8) -> AddressModeMap {
     let edge = SamplerAddressMode::ClampToEdge;
@@ -267,13 +257,16 @@ fn bound_map(ask: &NmbDirectDispatch, slot: u32) -> u8 {
     counted(ask.textures, ask.texture_count)
         .iter()
         .find(|t| t.slot == slot)
-        .and_then(|t| raw::<PixelFormat>(t.pixel_format, "pixel format").ok())
-        .map_or(0, converted_map)
+        .and_then(|t| {
+            let pf = raw::<PixelFormat>(t.pixel_format, "pixel format").ok()?;
+            Some(kernel_texture(pf, t.planes).map)
+        })
+        .unwrap_or(0)
 }
 
 /// `state` with each runtime sampler the kernel samples a converted texture through mapped by that texture's map, as
 /// m2v binds it (metal2vulkan-runtime address_map.rs `sampler_maps`): the pairs are the layout's. A sampler two textures
-/// need under different modes fails the dispatch's command buffer ("fails: ", RawDirect.mm), as m2v's
+/// need under different modes fails the dispatch's command buffer ("fails: ", TegraGM20BMetalDirect.mm), as m2v's
 /// `SharedSamplerSlot` does.
 fn mapped_samplers(layout: &PipelineLayout, ask: &NmbDirectDispatch, state: &BindState) -> Result<BindState, String> {
     let mut pairs = Vec::new();
@@ -312,15 +305,49 @@ fn mapped_samplers(layout: &PipelineLayout, ask: &NmbDirectDispatch, state: &Bin
 }
 
 fn facts_of(t: &NmbDirectBoundTexture) -> Result<TextureFacts, String> {
-    let pf = raw::<PixelFormat>(t.pixel_format, "pixel format")?;
-    let mut facts = TextureFacts::new(raw::<TextureType>(t.texture_type, "texture type")?, pf);
-    facts.address_modes = address_modes(converted_map(pf));
+    let read = kernel_texture(raw::<PixelFormat>(t.pixel_format, "pixel format")?, t.planes);
+    let mut facts = TextureFacts::new(raw::<TextureType>(t.texture_type, "texture type")?, read.format);
+    facts.address_modes = address_modes(read.map);
     facts.usage = raw::<TextureUsage>(t.usage, "texture usage")?;
     facts.sample_count = u32::try_from(t.samples.max(1)).map_err(e("sample count"))?;
     facts.array_length = u32::try_from(t.array_length.max(1)).map_err(e("array length"))?;
     facts.mipmap_level_count = u32::try_from(t.levels.max(1)).map_err(e("levels"))?;
-    facts.two_planes = t.planes != 0;
+    facts.two_planes = t.planes & TWO_PLANES != 0;
     Ok(facts)
+}
+
+/// `state` with each texture Metal stores no kernel write into (kernel_textures.rs) bound, at a slot the kernel only
+/// writes, as a format whose write-only slot the translator binds its neutral at, so the writes store nothing, as
+/// Metal's do; `access` is the kernel's declared access of a texture slot. A slot that reads and writes such a texture
+/// has no form: its reads are of the image raw converts, which its writes would change.
+fn dropped_stores(
+    access: impl Fn(u32) -> Option<TextureAccess>,
+    ask: &NmbDirectDispatch,
+    mut state: BindState,
+) -> Result<BindState, String> {
+    for t in counted(ask.textures, ask.texture_count) {
+        let pf = raw::<PixelFormat>(t.pixel_format, "pixel format")?;
+        let Some(a) = access(t.slot).filter(|a| a.write) else {
+            continue;
+        };
+        if kernel_texture(pf, t.planes).stores {
+            continue;
+        }
+        if a.read || a.sample {
+            return Err(format!(
+                "a kernel that reads and writes texture slot {} of {pf:?}, whose writes Metal stores nothing of",
+                t.slot
+            ));
+        }
+        if let Some(BoundTexture::Texture { facts, .. }) = state
+            .stages
+            .get_mut(&Stage::Kernel)
+            .and_then(|table| table.textures.get_mut(&t.slot))
+        {
+            facts.pixel_format = WRITES_DROPPED;
+        }
+    }
+    Ok(state)
 }
 
 fn bind_state(run: Run, dispatch: &NmbDirectDispatch, stage_in: bool) -> Result<BindState, String> {
@@ -444,7 +471,16 @@ fn settle(
         None => compiled(compile, descriptor, key, budget),
     };
     let base = pipeline(&VariantKey::new())?;
-    let state = mapped_samplers(&base.layout, ask, state)?;
+    let access = |slot: u32| match base
+        .interface
+        .slots
+        .iter()
+        .find(|(s, _)| s.stage == Stage::Kernel && s.class == SlotClass::Texture && s.index == slot)
+    {
+        Some((_, SlotInterface::Texture(t))) => Some(t.access),
+        _ => None,
+    };
+    let state = dropped_stores(access, ask, mapped_samplers(&base.layout, ask, state)?)?;
     let shape = state.shape();
     let plan = base.plan(compile, &shape).map_err(e("plan"))?;
     let wanted = plan.dispatch_variant(dispatch).map_err(e("dispatch variant"))?;
@@ -505,6 +541,72 @@ fn layout_of(plan: &BindingPlan) -> Vec<(u32, u32, u32, i32, u32)> {
             )
         })
         .collect()
+}
+
+/// What a kernel's plan changes where the probe binds its buffers off 16 bytes (`bound`'s variant, specialization and
+/// writes against those of the same buffers bound 16-aligned), None where nothing: a record holds one plan, whose
+/// residual words then carry each buffer's offset, so a plan that changes has no record
+fn offset_change(
+    [aligned, bound]: [&VariantKey; 2],
+    respecialized: bool,
+    [aligned_layout, bound_layout]: &[Vec<(u32, u32, u32, i32, u32)>; 2],
+) -> Option<String> {
+    let mut slots: std::collections::BTreeSet<u32> = aligned
+        .psb_slots
+        .symmetric_difference(&bound.psb_slots)
+        .chain(
+            aligned
+                .storage_view_slots
+                .symmetric_difference(&bound.storage_view_slots),
+        )
+        .filter(|s| s.class == SlotClass::Buffer)
+        .map(|s| s.index)
+        .collect();
+    let apart = |a: &[(u32, u32, u32, i32, u32)], b: &[(u32, u32, u32, i32, u32)]| {
+        a.iter().filter(|w| !b.contains(w)).map(|w| w.4).collect::<Vec<_>>()
+    };
+    slots.extend(
+        apart(aligned_layout, bound_layout)
+            .into_iter()
+            .chain(apart(bound_layout, aligned_layout)),
+    );
+    slots.remove(&u32::MAX);
+    if !slots.is_empty() {
+        let named: Vec<String> = slots.iter().map(u32::to_string).collect();
+        return Some(format!("buffer slots {}", named.join(", ")));
+    }
+    if aligned != bound {
+        return Some("its variant".into());
+    }
+    if aligned_layout != bound_layout {
+        return Some("the order of its descriptor writes".into());
+    }
+    respecialized.then(|| "its specialization constants".into())
+}
+
+/// The record's residual words, the plain plan's `words` (NativeMetalDirect.rs residual_words), where they hold every
+/// buffer's offset: raw binds a buffer entry 16-aligned and adds back only the remainder a residual word names
+/// (compute.cpp kernelBufferDescriptor), so a plan the offsets change (offset_change of `variants`, `respecialized`
+/// and `layouts`), or a residual placed where no record word names it, is refused
+fn record_residuals(
+    variants: [&VariantKey; 2],
+    respecialized: bool,
+    layouts: &[Vec<(u32, u32, u32, i32, u32)>; 2],
+    words: [u8; 32],
+) -> Result<[u8; 32], String> {
+    if let Some(what) = offset_change(variants, respecialized, layouts) {
+        return Err(format!(
+            "a kernel whose plan changes with its buffers bound off 16 bytes ({what}): no residual word holds their \
+             offsets"
+        ));
+    }
+    match words.iter().position(|&w| w == UNNAMED_RESIDUAL) {
+        Some(slot) => Err(format!(
+            "buffer slot {slot}'s bind offset residual placed past word 30 of its argument table, which no record word \
+             names"
+        )),
+        None => Ok(words),
+    }
 }
 
 /// A stage-in kernel's push words the raw dispatch writes: its StageInRegion's and each dynamic layout's StageInStride
@@ -818,12 +920,21 @@ pub fn direct(
         &budget,
         artifact,
     )?;
+    // InlineBytes have no buffer hazard entries; the moved and bound plans expose those accesses.
+    let [buffer_reads, buffer_writes, texture_reads, texture_writes] =
+        access_masks([&plain.plan, &moved.plan, &bound.plan]);
     let region = |s: &Settled| s.commands.regions.first().map(|r| r.specialization.clone());
     let same = |s: &Settled| {
         s.plan.variant == plain.plan.variant
             && region(s) == region(&plain)
             && layout_of(&s.plan) == layout_of(&plain.plan)
     };
+    let residual_word = record_residuals(
+        [&moved.plan.variant, &bound.plan.variant],
+        region(&bound) != region(&moved),
+        &[layout_of(&moved.plan), layout_of(&bound.plan)],
+        residual_words(&plain.plan, Stage::Kernel),
+    )?;
     let (push_mask, push) = push_words(&plain.commands);
     let (stage_in_region_word, stage_in_strides) = stage_in_words(&plain.plan)?;
     let (moved_mask, moved_push) = push_words(&moved.commands);
@@ -863,9 +974,6 @@ pub fn direct(
     let entry = CString::new(stage.entry_point.as_str()).unwrap_or_default();
     let variant = CString::new(format!("{:?}", plain.plan.variant)).unwrap_or_default();
     let semantic = plain.pipeline.pipeline.program.as_ref().map(SemanticView::of);
-    // InlineBytes have no buffer hazard entries; the moved and bound plans expose those accesses.
-    let [buffer_reads, buffer_writes, texture_reads, texture_writes] =
-        access_masks([&plain.plan, &moved.plan, &bound.plan]);
     let mut kernel = NmbDirectKernel {
         device: vulkan.map_or(0, |d| avk::Handle::as_raw(d.handle())),
         layout: avk::Handle::as_raw(layout.pipeline),
@@ -900,7 +1008,6 @@ pub fn direct(
         bound_mask,
         bound: bound_push,
         moved_same,
-        bound_same: same(&bound),
         region_word: region_word(&plain.plan),
         regions: plain.commands.regions.len() as u32,
         push_holes: plain.commands.push_holes.len() as u32,
@@ -922,7 +1029,7 @@ pub fn direct(
         spill_words: plain_spill.len() as u32,
         moved_spill_words: moved_spill.len() as u32,
         bound_spill_words: bound_spill.len() as u32,
-        residual_word: residual_words(&plain.plan, Stage::Kernel),
+        residual_word,
         stage_in_region_word,
         stage_in_strides,
     };
@@ -978,5 +1085,154 @@ impl SemanticView {
             records: program.records.as_ptr(),
             operands: program.operands.as_ptr(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use metal2vulkan::pipeline::SlotRef;
+
+    fn bound(slot: u32, pixel_format: u64, planes: u32) -> NmbDirectBoundTexture {
+        NmbDirectBoundTexture {
+            slot,
+            planes,
+            pixel_format,
+            texture_type: 2,
+            usage: 1,
+            levels: 1,
+            array_length: 1,
+            samples: 1,
+        }
+    }
+
+    // C32's ci_srgb_to_linear_colormatrix over the planes of a 'p420' surface (588, 589): no format of the translator's
+    #[test]
+    fn a_packed_planes_slot_is_planned_as_the_image_raw_binds_there() {
+        for format in [588, 589] {
+            let facts = facts_of(&bound(1, format, 0)).unwrap();
+            assert_eq!(facts.pixel_format, PixelFormat::RGB10A2Unorm, "format {format}");
+            assert_eq!(facts.address_modes, AddressModeMap::IDENTITY);
+        }
+    }
+
+    // A 4:2:0 converted texture over a P3_D65 surface: raw reads its codes image and samples it under the codes map (3)
+    #[test]
+    fn a_stated_map_decides_the_samplers_and_a_codes_read_the_format() {
+        let facts = facts_of(&bound(0, 500, (1 << 15) | (3 << 8))).unwrap();
+        assert_eq!(facts.pixel_format, PixelFormat::RGB84202P);
+        assert_eq!(facts.address_modes, address_modes(3));
+        assert!(!facts.two_planes, "bit 15 states a map, not two planes");
+        let facts = facts_of(&bound(0, 500, 0)).unwrap();
+        assert_eq!(
+            (facts.pixel_format, facts.address_modes),
+            (PixelFormat::YCBCR84202P, address_modes(1))
+        );
+        assert!(facts_of(&bound(0, 550, 1)).unwrap().two_planes);
+    }
+
+    fn buffer(index: u32) -> SlotRef {
+        SlotRef {
+            stage: Stage::Kernel,
+            class: SlotClass::Buffer,
+            index,
+        }
+    }
+
+    // A record holds one plan, and each buffer's residual word carries its offset: a kernel whose plan the probe's
+    // buffers bound off 16 bytes change is refused, naming the slots, and one whose plan they leave keeps its words
+    #[test]
+    fn a_plan_a_buffer_offset_changes_is_named_and_one_it_leaves_is_kept() {
+        let plain = VariantKey::new();
+        let layout = vec![(0, 0, 0, 7, 2), (0, 1, 0, 6, 5)];
+        let mut words = [0u8; 32];
+        words[2] = 4;
+        words[5] = 40;
+        let kept = record_residuals([&plain, &plain], false, &[layout.clone(), layout.clone()], words);
+        assert_eq!(kept, Ok(words));
+        let mut addressed = VariantKey::new();
+        addressed.psb_slots.insert(buffer(5));
+        let moved = vec![(0, 0, 0, 7, 2), (0, 1, 0, 7, 3)];
+        let refused = record_residuals([&plain, &addressed], false, &[layout.clone(), moved.clone()], words);
+        assert!(refused.unwrap_err().contains("(buffer slots 3, 5)"));
+        let named = offset_change([&plain, &addressed], false, &[layout.clone(), moved]);
+        assert_eq!(named.as_deref(), Some("buffer slots 3, 5"));
+        let mut viewed = VariantKey::new();
+        viewed.emulated_simdgroups = true;
+        let changed = offset_change([&plain, &viewed], false, &[layout.clone(), layout.clone()]);
+        assert_eq!(changed.as_deref(), Some("its variant"));
+        let reordered: Vec<_> = layout.iter().rev().copied().collect();
+        let order = offset_change([&plain, &plain], false, &[layout.clone(), reordered]);
+        assert_eq!(order.as_deref(), Some("the order of its descriptor writes"));
+        let specialized = offset_change([&plain, &plain], true, &[layout.clone(), layout]);
+        assert_eq!(specialized.as_deref(), Some("its specialization constants"));
+    }
+
+    #[test]
+    fn a_residual_no_record_word_names_is_refused_by_its_slot() {
+        let plain = VariantKey::new();
+        let layouts = [vec![(0, 0, 0, 7, 3)], vec![(0, 0, 0, 7, 3)]];
+        let mut words = [0u8; 32];
+        words[0] = 1;
+        words[3] = 63;
+        assert_eq!(record_residuals([&plain, &plain], false, &layouts, words), Ok(words));
+        words[9] = UNNAMED_RESIDUAL;
+        let refused = record_residuals([&plain, &plain], false, &layouts, words).unwrap_err();
+        assert!(refused.starts_with("buffer slot 9's"), "{refused}");
+    }
+
+    fn kernel_state(textures: &[NmbDirectBoundTexture]) -> BindState {
+        let mut table = StageTable::default();
+        for t in textures {
+            table.textures.insert(
+                t.slot,
+                BoundTexture::Texture {
+                    facts: facts_of(t).unwrap(),
+                    resource_id: None,
+                },
+            );
+        }
+        let mut state = BindState::default();
+        state.stages.insert(Stage::Kernel, table);
+        state
+    }
+
+    fn format_at(state: &BindState, slot: u32) -> PixelFormat {
+        match &state.stages[&Stage::Kernel].textures[&slot] {
+            BoundTexture::Texture { facts, .. } => facts.pixel_format,
+            _ => panic!("no texture at {slot}"),
+        }
+    }
+
+    // An M4 Max stores nothing of a kernel's write into an R10Unorm_PACKED or RG10Unorm_PACKED texture, nor into a
+    // YCBCR8_422_1P one: a slot the kernel only writes is bound as a format whose writes the translator drops, one it
+    // reads too is refused, and any other texture's writes are planned as they were
+    #[test]
+    fn a_kernels_writes_into_a_texture_metal_stores_none_of_store_nothing() {
+        let textures = [bound(0, 70, 0), bound(3, 588, 0), bound(4, 501, 0)];
+        let ask = NmbDirectDispatch {
+            threads: [32, 8, 1],
+            memory: [0; 31],
+            textures: textures.as_ptr(),
+            texture_count: 3,
+            samplers: std::ptr::null(),
+            sampler_count: 0,
+            region_mode: 0,
+        };
+        let write = TextureAccess::new(false, false, true);
+        let state = dropped_stores(|_| Some(write), &ask, kernel_state(&textures)).unwrap();
+        assert_eq!(format_at(&state, 0), PixelFormat::RGBA8Unorm);
+        assert_eq!(format_at(&state, 3), WRITES_DROPPED);
+        assert_eq!(format_at(&state, 4), WRITES_DROPPED);
+        let read = |slot| Some(TextureAccess::new(false, slot == 3, true));
+        let why = dropped_stores(read, &ask, kernel_state(&textures)).unwrap_err();
+        assert!(why.contains("texture slot 3 of R10UnormPACKED"), "{why}");
+        let sampled = |slot| Some(TextureAccess::new(true, false, slot == 0));
+        let state = dropped_stores(sampled, &ask, kernel_state(&textures)).unwrap();
+        assert_eq!(
+            format_at(&state, 3),
+            PixelFormat::RGB10A2Unorm,
+            "a slot only read keeps the image raw binds"
+        );
     }
 }

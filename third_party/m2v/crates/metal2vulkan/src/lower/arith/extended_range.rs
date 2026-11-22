@@ -219,7 +219,6 @@ pub fn tile_value(
     raw: Value,
     table: Option<GlobalId>,
 ) -> BResult<Value> {
-    let f = floats();
     let c = codes(fb, form, raw)?;
     let by_code = !form.srgb() || matches!(form, ExtendedRange::Bgra10 { .. });
     let c = match by_code {
@@ -240,7 +239,7 @@ pub fn tile_value(
             fb.glsl(GlslOp::FClamp, &[v, lo, hi])?
         }
     };
-    f32_to_half(fb, f, v, HalfRounding::NearestAway)
+    to_half(fb, v, HalfRounding::NearestAway, table.is_some())
 }
 
 /// Metal's read of the tile memory of an attachment of `form` that holds `held` (a `vec4` of
@@ -291,8 +290,7 @@ fn value_of_codes(
     // `s / 8192` (EV XRR2-x6c: every code), its `half` with ties away from zero (EV XRR2-x6fs:
     // every code).
     if form.padded() {
-        let d = splat(fb, u, 1023)?;
-        let v = ratio_to_f32(fb, u, c, d)?;
+        let v = quotient(fb, c, &[1023])?;
         let (v, rounding) = match form {
             ExtendedRange::R10X6Srgb => {
                 let table = table.ok_or_else(missing_table)?;
@@ -309,7 +307,7 @@ fn value_of_codes(
             _ => (v, HalfRounding::NearestEven),
         };
         return match half {
-            true => f32_to_half(fb, f, v, rounding),
+            true => to_half(fb, v, rounding, form == ExtendedRange::R10X6Srgb),
             false => Ok(v),
         };
     }
@@ -326,14 +324,14 @@ fn value_of_codes(
     let n = fb.select(neg, down, up)?;
     // |c - 384| / 510, correctly rounded: the quotient over 1020 (its operands within the
     // routine's `k <= d`), doubled exactly.
-    let (d, two) = match planes {
+    let (d, two): (&[u32], Value) = match planes {
         true => (
-            per_lane(fb, [1020, 1020, 1020, 255])?,
+            &[1020, 1020, 1020, 255],
             per_lane_f(fb, [2.0, 2.0, 2.0, 1.0])?,
         ),
-        false => (splat(fb, u, 1020)?, fsplat(fb, f, 2.0)?),
+        false => (&[1020], fsplat(fb, f, 2.0)?),
     };
-    let q = ratio_to_f32(fb, u, n, d)?;
+    let q = quotient(fb, n, d)?;
     let mut v = fb.binary(BinOp::FMul, q, two)?;
     if let Some(table) = table {
         let ft = crate::lower::arith::ops::ty(fb, f)?;
@@ -348,9 +346,50 @@ fn value_of_codes(
     let minus = fb.unary(crate::spirv::ir::UnOp::FNegate, v)?;
     let v = fb.select(neg, minus, v)?;
     match half {
-        true => f32_to_half(fb, f, v, HalfRounding::NearestAway),
+        true => to_half(fb, v, HalfRounding::NearestAway, table.is_some()),
         false => Ok(v),
     }
+}
+
+/// `k / d[i]` correctly rounded to `f32` for lane `i` of `u32` codes `k` (`0 <= k <= d[i]`): on
+/// the Sm53 target by the quotient mended by its residual
+/// ([`residual_round::ratio_to_f32`](super::residual_round::ratio_to_f32)), elsewhere by the
+/// integer sequence.
+fn quotient(fb: &mut FunctionBuilder<'_>, k: Value, d: &[u32]) -> BResult<Value> {
+    let u = words();
+    if super::residual_round::takes(fb) {
+        return super::residual_round::ratio_to_f32(fb, u, k, d);
+    }
+    let d = match *d {
+        [one] => splat(fb, u, u64::from(one))?,
+        [r, g, b, a] => per_lane(fb, [r, g, b, a])?,
+        _ => {
+            return Err(crate::spirv::error::BuildError::Type(
+                crate::spirv::error::TypeRule::FunctionSignature,
+            ))
+        }
+    };
+    ratio_to_f32(fb, u, k, d)
+}
+
+/// The decoded value `v` (four `f32` lanes) rounded to `half` by `rounding`, held as its `f32`. On
+/// the Sm53 target GM20B's conversion pair rounds to nearest even, which is also the nearest-away
+/// rounding of a value that is never a `half` tie: a linear code's `(c - 384) / 510`, an alpha
+/// byte's `b / 255` and a padded code's `c / 1023` are not, of every code; an `_sRGB` step can be
+/// (`srgb_steps`).
+fn to_half(
+    fb: &mut FunctionBuilder<'_>,
+    v: Value,
+    rounding: HalfRounding,
+    srgb_steps: bool,
+) -> BResult<Value> {
+    let f = floats();
+    if rounding == HalfRounding::NearestEven || !srgb_steps {
+        if let Some(h) = super::residual_round::half_nearest_even(fb, f, v)? {
+            return Ok(h);
+        }
+    }
+    f32_to_half(fb, f, v, rounding)
 }
 
 /// The value `s / 8192` of the decode step `s` in the low half of word `i` (a `u32` scalar) of

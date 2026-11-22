@@ -16,7 +16,7 @@ use super::*;
 use crate::pipeline::layout::BindingSource;
 
 /// Apple's rows of kind `kind` in `planes_m4.txt`, each a row of hex words.
-fn apple(kind: &str) -> Vec<Vec<u32>> {
+pub(super) fn apple(kind: &str) -> Vec<Vec<u32>> {
     include_str!("planes_m4.txt")
         .lines()
         .filter(|l| l.split(' ').next() == Some(kind))

@@ -26,14 +26,13 @@ extern "C" void _enable_preemption(void);   // NOLINT(bugprone-reserved-identifi
 namespace
 {
 const char *const kNames[SWITCH_GPU_PATH_COUNT] = {
-	"internal_jobs",        "external_jobs", "unlocked_writes", "volatile_binds",
-	"lean_copy_jobs",       "control_bos",   "cpu_completes",   "ranged_uses",
-	"visible_waits",        "native_views",  "native_reads",    "native_tiled_views",
-	"event_jobs",           "ready_arms",    "submit_jobs",     "set_jobs",
-	"stale_sets",           "address_jobs",  "shared_uses",     "relayout_fresh",
-	"relayout_deferred",    "relayout_lazy", "relayout_never",  "relayout_moved",
-	"quiet_jobs",           "wake_asks",     "writer_promises", "promise_waits",
-	"promise_cpu_releases",
+	"internal_jobs",  "external_jobs",   "unlocked_writes", "volatile_binds",
+	"lean_copy_jobs", "control_bos",     "cpu_completes",   "ranged_uses",
+	"visible_waits",  "native_views",    "native_reads",    "native_tiled_views",
+	"event_jobs",     "ready_arms",      "submit_jobs",     "set_jobs",
+	"stale_sets",     "shared_uses",     "relayout_fresh",  "relayout_deferred",
+	"relayout_lazy",  "relayout_never",  "relayout_moved",  "quiet_jobs",
+	"wake_asks",      "writer_promises", "promise_waits",   "promise_cpu_releases",
 };
 
 // Every path is taken in the syscall or trap of the process it is for, so each process counts its own: a reader of
