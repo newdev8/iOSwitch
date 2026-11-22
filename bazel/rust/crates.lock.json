@@ -1,5 +1,5 @@
 {
-  "checksum": "418721c51af239ad95b11dbffc52ab33f74af3429c7678c5d82161168ae3a88b",
+  "checksum": "3759c50ea5759ea610e5ee63d971264c7b7a305b7ee637a8e538565a382d0e0d",
   "conditions": {
     "aarch64-apple-darwin": [
       "aarch64-apple-darwin"
@@ -17,13 +17,18 @@
     "cfg(any())": [],
     "cfg(any(target_arch = \"aarch64\", target_arch = \"x86_64\", target_arch = \"x86\"))": [
       "aarch64-apple-darwin",
-      "aarch64-apple-ios"
+      "aarch64-apple-ios",
+      "x86_64-apple-darwin"
     ],
     "cfg(unix)": [
       "aarch64-apple-darwin",
-      "aarch64-apple-ios"
+      "aarch64-apple-ios",
+      "x86_64-apple-darwin"
     ],
-    "cfg(windows)": []
+    "cfg(windows)": [],
+    "x86_64-apple-darwin": [
+      "x86_64-apple-darwin"
+    ]
   },
   "crates": {
     "ash 0.38.0+1.3.281": {

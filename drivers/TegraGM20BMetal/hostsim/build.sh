@@ -29,23 +29,27 @@ set -e
 HERE=$(cd "$(dirname "$0")" && pwd)
 TREE=$HERE/../../..
 METAL_ABI=${METAL_ABI:-$TREE/bazel-bin/drivers/NativeMetal/abi}
+COMPAT=()
+if [ "$(xcrun --show-sdk-version | cut -d. -f1)" -lt 15 ]; then
+    COMPAT=(-include "$HERE/MetalHostCompat.h")
+fi
 mkdir -p "$2"
 xcrun clang -O1 -Wall -dynamiclib -I "$TREE/drivers/TegraGM20B" "$HERE/mock_iokit.c" -framework IOKit -framework CoreFoundation \
     -install_name @rpath/libmock_iokit.dylib -o "$2/libmock_iokit.dylib"
-xcrun clang++ -O1 -g -std=c++17 -fobjc-arc -Wno-deprecated-declarations -I "$TREE/drivers/NativeMetal" -I "$METAL_ABI" -x objective-c++ \
+xcrun clang++ -O1 -g -std=c++17 -fobjc-arc -Wno-deprecated-declarations "${COMPAT[@]}" -I "$TREE/drivers/NativeMetal" -I "$METAL_ABI" -x objective-c++ \
     "$HERE/m2v_gm20b.mm" "$TREE/drivers/NativeMetal/NativeBridgeMetalFrontend.mm" -x none "$1" -L "$2" -lmock_iokit \
     -Wl,-rpath,"$2" -lobjc -framework Foundation -framework Metal -framework IOSurface -framework IOKit -o "$2/m2v_gm20b"
-xcrun clang++ -O1 -g -std=c++17 -fobjc-arc -Wno-deprecated-declarations -I "$TREE/drivers/NativeMetal" -I "$METAL_ABI" -x objective-c++ \
+xcrun clang++ -O1 -g -std=c++17 -fobjc-arc -Wno-deprecated-declarations "${COMPAT[@]}" -I "$TREE/drivers/NativeMetal" -I "$METAL_ABI" -x objective-c++ \
     "$HERE/qc_frontend.mm" "$TREE/drivers/NativeMetal/NativeBridgeMetalFrontend.mm" -x none "$1" -L "$2" -lmock_iokit \
     -Wl,-rpath,"$2" -lobjc -framework Foundation -framework Metal -framework IOSurface -framework IOKit -o "$2/qc_frontend"
-xcrun clang++ -O1 -g -std=c++17 -fobjc-arc -Wno-deprecated-declarations -I "$TREE/drivers/NativeMetal" -I "$METAL_ABI" -x objective-c++ \
+xcrun clang++ -O1 -g -std=c++17 -fobjc-arc -Wno-deprecated-declarations "${COMPAT[@]}" -I "$TREE/drivers/NativeMetal" -I "$METAL_ABI" -x objective-c++ \
     "$HERE/present_frontend.mm" "$TREE/drivers/NativeMetal/NativeBridgeMetalFrontend.mm" -x none "$1" -L "$2" -lmock_iokit \
     -Wl,-rpath,"$2" -lobjc -framework Foundation -framework Metal -framework IOSurface -framework IOKit -o "$2/present_frontend"
-xcrun clang++ -O1 -g -std=c++17 -fobjc-arc -Wno-deprecated-declarations -I "$TREE/drivers/NativeMetal" -I "$METAL_ABI" -I "$HERE" \
+xcrun clang++ -O1 -g -std=c++17 -fobjc-arc -Wno-deprecated-declarations "${COMPAT[@]}" -I "$TREE/drivers/NativeMetal" -I "$METAL_ABI" -I "$HERE" \
     -x objective-c++ "$HERE/memory_frontend.mm" "$TREE/drivers/NativeMetal/NativeBridgeMetalFrontend.mm" -x none "$1" \
     -L "$2" -lmock_iokit -Wl,-rpath,"$2" -lobjc -framework Foundation -framework Metal -framework IOSurface -framework IOKit \
     -o "$2/memory_frontend"
-xcrun clang++ -O1 -g -std=c++17 -fobjc-arc -Wno-deprecated-declarations -I "$TREE/drivers/NativeMetal" -I "$METAL_ABI" -I "$TREE/drivers/TegraGM20B" \
+xcrun clang++ -O1 -g -std=c++17 -fobjc-arc -Wno-deprecated-declarations "${COMPAT[@]}" -I "$TREE/drivers/NativeMetal" -I "$METAL_ABI" -I "$TREE/drivers/TegraGM20B" \
     -I "$HERE" -x objective-c++ "$HERE/exec_surfaces.mm" "$TREE/drivers/NativeMetal/NativeBridgeMetalFrontend.mm" -x none "$1" \
     -L "$2" -lmock_iokit -Wl,-rpath,"$2" -lobjc -framework Foundation -framework Metal -framework IOSurface -framework IOKit \
     -o "$2/exec_surfaces"
@@ -64,30 +68,30 @@ xcrun clang++ -O2 -std=c++17 -c "$RAW/runtime/raw_pack.cpp" -o "$GPU/raw_pack_mo
 # kits/SwitchGM20BEmit's emitters, which raw_gpu.cpp and raw_transfer.cpp call, in the mock library every harness links (their
 # generated headers: bazel build //kits/SwitchGM20BEmit:push_headers)
 for f in SwitchGM20BEmit3D SwitchGM20BEmitBarrier SwitchGM20BEmitIterated mesa/nouveau_copy_rect; do
-    xcrun clang -O2 -std=c11 -DNDEBUG -I "$TREE/kits/SwitchGM20BEmit/mesa" -I "$TREE/bazel-bin/kits/SwitchGM20BEmit/gen" \
+    xcrun clang -O2 -std=c11 -DNDEBUG -I "$TREE/kits/SwitchGM20BEmit/mesa" -I "$TREE/bazel-bin/kits/SwitchGM20BEmit/gen" -I "$TREE/bazel-bin/kits/SwitchGM20B" \
         -I "$TREE/third_party/mesa/src/nouveau/headers" -c "$TREE/kits/SwitchGM20BEmit/$f.c" -o "$GPU/kit_${f##*/}.o"
 done
 xcrun clang++ -dynamiclib "$GPU/mock_iokit.o" "$GPU/cap.o" "$GPU/nvdec.o" "$GPU/nvdec_compute.o" "$GPU/twod_sim.o" "$GPU/raw_capture.o" "$GPU/raw_pack_mock.o" \
     "$GPU/mme_fermi.o" "$GPU/mme_fermi_sim.o" "$GPU"/kit_*.o \
     -framework IOKit -framework CoreFoundation -install_name @rpath/libmock_iokit.dylib -o "$GPU/libmock_iokit.dylib"
-xcrun clang++ -O1 -g -std=c++17 -fobjc-arc -Wno-deprecated-declarations -I "$TREE/drivers/NativeMetal" -I "$METAL_ABI" -I "$TREE/drivers/TegraGM20B" -I "$TREE/kits/SwitchGM20BEmit/mesa" -I "$TREE/bazel-bin/kits/SwitchGM20BEmit/gen" -I "$TREE/third_party/mesa/src/nouveau/headers" \
+xcrun clang++ -O1 -g -std=c++17 -fobjc-arc -Wno-deprecated-declarations "${COMPAT[@]}" -I "$TREE/drivers/NativeMetal" -I "$METAL_ABI" -I "$TREE/drivers/TegraGM20B" -I "$TREE/kits/SwitchGM20BEmit/mesa" -I "$TREE/bazel-bin/kits/SwitchGM20BEmit/gen" -I "$TREE/bazel-bin/kits/SwitchGM20B" -I "$TREE/third_party/mesa/src/nouveau/headers" \
     -x objective-c++ "$HERE/alias_frame.mm" "$RAW"/runtime/Raw*.mm "$RAW/runtime/SwitchSharedEvent.mm" \
     "$TREE/drivers/NativeMetal/NativeBridgeMetalFrontend.mm" -x c++ "$RAW/runtime/raw_gpu.cpp" "$RAW/runtime/raw_draw_bands.cpp" "$RAW/runtime/raw_split.cpp" "$RAW/runtime/raw_variants.cpp" "$RAW/runtime/raw_alias.cpp" "$RAW/runtime/raw_arena.cpp" \
     "$RAW/fx/fx_mip.cpp" "$RAW/fx/fx_image.cpp" "$RAW/runtime/raw_kernel.cpp" "$RAW/runtime/raw_kernel_job.cpp" "$RAW/runtime/raw_resource_set.cpp" "$RAW/runtime/raw_state_segment.cpp" "$RAW/runtime/raw_encoder_state.cpp" "$RAW/runtime/raw_shared_events.cpp" "$RAW/runtime/raw_pack.cpp" "$RAW/runtime/raw_ycbcr.cpp" "$RAW/runtime/raw_zeta.cpp" "$RAW/runtime/raw_comp.cpp" "$RAW/runtime/raw_capture.cpp" "$RAW/runtime/raw_record.cpp" \
     "$RAW/runtime/raw_cache.cpp" "$RAW/runtime/raw_compiler.cpp" "$RAW/runtime/raw_metallib.cpp" "$RAW/runtime/raw_completed.cpp" "$RAW/runtime/raw_compute.cpp" "$RAW/runtime/raw_compute_loops.cpp" "$RAW/runtime/raw_loop_copies.cpp" "$RAW/runtime/raw_predication.cpp" "$RAW/runtime/raw_predicate_loops.cpp" "$TREE/kits/SwitchRefusal/SwitchRefusal.c" -x none "$1" \
     -L "$GPU" -lmock_iokit -Wl,-rpath,"$GPU" -lobjc -framework Foundation -framework Metal -framework IOSurface \
     -framework IOKit -framework CoreFoundation -o "$GPU/alias_frame"
-xcrun clang++ -O1 -g -std=c++17 -Wall -I "$TREE/third_party/mesa/include" -I "$TREE/drivers/TegraGM20B" -I "$TREE/kits/SwitchGM20BEmit/mesa" -I "$TREE/bazel-bin/kits/SwitchGM20BEmit/gen" -I "$TREE/third_party/mesa/src/nouveau/headers" "$HERE/nvk_alias.cpp" \
+xcrun clang++ -O1 -g -std=c++17 -Wall -I "$TREE/third_party/mesa/include" -I "$TREE/drivers/TegraGM20B" -I "$TREE/kits/SwitchGM20BEmit/mesa" -I "$TREE/bazel-bin/kits/SwitchGM20BEmit/gen" -I "$TREE/bazel-bin/kits/SwitchGM20B" -I "$TREE/third_party/mesa/src/nouveau/headers" "$HERE/nvk_alias.cpp" \
     "$RAW/runtime/raw_kernel.cpp" "$RAW/runtime/raw_kernel_job.cpp" "$RAW/runtime/raw_resource_set.cpp" "$RAW/runtime/raw_state_segment.cpp" "$RAW/runtime/raw_encoder_state.cpp" "$RAW/runtime/raw_shared_events.cpp" "$RAW/fx/fx_mip.cpp" "$RAW/fx/fx_image.cpp" -L "$GPU" -lmock_iokit -Wl,-rpath,"$GPU" -framework IOKit \
     -o "$GPU/nvk_alias"
-xcrun clang++ -O1 -g -std=c++17 -Wall -I "$TREE/third_party/mesa/include" -I "$TREE/drivers/TegraGM20B" -I "$TREE/kits/SwitchGM20BEmit/mesa" -I "$TREE/bazel-bin/kits/SwitchGM20BEmit/gen" -I "$TREE/third_party/mesa/src/nouveau/headers" \
+xcrun clang++ -O1 -g -std=c++17 -Wall -I "$TREE/third_party/mesa/include" -I "$TREE/drivers/TegraGM20B" -I "$TREE/kits/SwitchGM20BEmit/mesa" -I "$TREE/bazel-bin/kits/SwitchGM20BEmit/gen" -I "$TREE/bazel-bin/kits/SwitchGM20B" -I "$TREE/third_party/mesa/src/nouveau/headers" \
     "$HERE/surface_layout.cpp" -L "$GPU" -lmock_iokit -Wl,-rpath,"$GPU" -o "$GPU/surface_layout"
-xcrun clang++ -O1 -g -std=c++17 -fobjc-arc -Wno-deprecated-declarations -I "$TREE/drivers/NativeMetal" -I "$METAL_ABI" -I "$TREE/drivers/TegraGM20B" -I "$TREE/kits/SwitchGM20BEmit/mesa" -I "$TREE/bazel-bin/kits/SwitchGM20BEmit/gen" -I "$TREE/third_party/mesa/src/nouveau/headers" \
+xcrun clang++ -O1 -g -std=c++17 -fobjc-arc -Wno-deprecated-declarations "${COMPAT[@]}" -I "$TREE/drivers/NativeMetal" -I "$METAL_ABI" -I "$TREE/drivers/TegraGM20B" -I "$TREE/kits/SwitchGM20BEmit/mesa" -I "$TREE/bazel-bin/kits/SwitchGM20BEmit/gen" -I "$TREE/bazel-bin/kits/SwitchGM20B" -I "$TREE/third_party/mesa/src/nouveau/headers" \
     -x objective-c++ "$HERE/layout_frame.mm" "$TREE/drivers/NativeMetal/NativeBridgeMetalFrontend.mm" \
     -x c++ "$RAW/runtime/raw_kernel.cpp" "$RAW/runtime/raw_kernel_job.cpp" "$RAW/runtime/raw_resource_set.cpp" "$RAW/runtime/raw_state_segment.cpp" "$RAW/runtime/raw_encoder_state.cpp" "$RAW/runtime/raw_shared_events.cpp" "$RAW/fx/fx_mip.cpp" "$RAW/fx/fx_image.cpp" -x none "$1" -L "$GPU" -lmock_iokit -Wl,-rpath,"$GPU" -lobjc \
     -framework Foundation -framework Metal -framework IOSurface -framework IOKit -framework CoreFoundation \
     -o "$GPU/layout_frame"
-xcrun clang++ -O1 -g -std=c++17 -fobjc-arc -Wno-deprecated-declarations -I "$TREE/drivers/NativeMetal" -I "$METAL_ABI" -I "$TREE/drivers/TegraGM20B" -I "$TREE/kits/SwitchGM20BEmit/mesa" -I "$TREE/bazel-bin/kits/SwitchGM20BEmit/gen" -I "$TREE/third_party/mesa/src/nouveau/headers" \
+xcrun clang++ -O1 -g -std=c++17 -fobjc-arc -Wno-deprecated-declarations "${COMPAT[@]}" -I "$TREE/drivers/NativeMetal" -I "$METAL_ABI" -I "$TREE/drivers/TegraGM20B" -I "$TREE/kits/SwitchGM20BEmit/mesa" -I "$TREE/bazel-bin/kits/SwitchGM20BEmit/gen" -I "$TREE/bazel-bin/kits/SwitchGM20B" -I "$TREE/third_party/mesa/src/nouveau/headers" \
     -x objective-c++ "$HERE/fault_frame.mm" "$TREE/drivers/NativeMetal/NativeBridgeMetalFrontend.mm" -x none "$1" -L "$GPU" \
     -lmock_iokit -Wl,-rpath,"$GPU" -lobjc -framework Foundation -framework Metal -framework IOSurface -framework IOKit \
     -framework CoreFoundation -o "$GPU/fault_frame"

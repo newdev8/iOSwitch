@@ -118,6 +118,8 @@ crate.from_specs(
     supported_platform_triples = [
         "aarch64-apple-darwin",
         "aarch64-apple-ios",
+        # The hostsim builds the bridge on Intel Macs too (build.sh's macOS host build).
+        "x86_64-apple-darwin",
     ],
 )
 use_repo(crate, "rust_crates")

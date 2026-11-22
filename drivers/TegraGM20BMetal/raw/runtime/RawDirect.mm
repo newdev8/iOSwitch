@@ -234,7 +234,7 @@ void KernelDispatch::sampler(uint32_t slot, MTLSamplerDescriptor *d)
     samplers_.push_back(
         {slot,
          {d.minFilter, d.magFilter, d.mipFilter, d.sAddressMode, d.tAddressMode, d.rAddressMode, d.borderColor,
-          d.normalizedCoordinates, d.maxAnisotropy, d.compareFunction, d.lodAverage, d.lodMinClamp, d.lodMaxClamp}});
+          (uint64_t)d.normalizedCoordinates, d.maxAnisotropy, d.compareFunction, d.lodAverage != 0, d.lodMinClamp, d.lodMaxClamp}});
 }
 
 const NmbDirectDispatch &KernelDispatch::dispatch()

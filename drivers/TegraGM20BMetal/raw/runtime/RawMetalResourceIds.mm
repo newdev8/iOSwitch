@@ -73,9 +73,9 @@ void rmHeapForgetSampler(RMSampler *s)
     const uint64_t word = raw::samplerResourceId(_raw.tsc);
     if (word && gRM && !_idNamed.exchange(true, std::memory_order_acq_rel)) {
         MTLSamplerDescriptor *d = _descriptor;
-        const raw::SamplerFacts facts = {d.minFilter,     d.magFilter,       d.mipFilter,   d.sAddressMode,
-                                         d.tAddressMode,  d.rAddressMode,    d.borderColor, d.normalizedCoordinates,
-                                         d.maxAnisotropy, d.compareFunction, d.lodAverage,  d.lodMinClamp,
+        const raw::SamplerFacts facts = {d.minFilter,       d.magFilter,           d.mipFilter,   d.sAddressMode,
+                                         d.tAddressMode,    d.rAddressMode,        d.borderColor, (uint64_t)d.normalizedCoordinates,
+                                         d.maxAnisotropy,   d.compareFunction,     d.lodAverage != 0, d.lodMinClamp,
                                          d.lodMaxClamp};
         if (!gRM->raw->nameSampler(_raw, raw::samplerWord(facts), _normalized))
             heapRefused("sampler");
