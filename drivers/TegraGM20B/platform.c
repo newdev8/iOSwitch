@@ -85,7 +85,7 @@
 #define GPU_UV_FLOOR 610000
 /* The rail's fixed voltage: the worst NA voltage at 1267.2 MHz plus the 20% fixed-PLL margin (~1362 mV), rounded up;
  * MAX77812 codes it at 5 mV steps. */
-#define GPU_UV_CEIL 1400000
+#define GPU_UV_CEIL 1100000
 #define GPU_VOUT_RAMP_US \
 	1000 /* hekate max7762x.c:209-210; 5 mV/us slew (DT nx-pmic.dtsi:29-32,46) */
 #define GPU_ENABLE_RAMP_US \

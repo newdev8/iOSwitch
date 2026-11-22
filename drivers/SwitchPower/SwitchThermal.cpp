@@ -306,7 +306,7 @@ constexpr uint8_t kPeakCurrentMask = 0x70, kPeakCurrent7200mA = 7u << 4, kVersio
 // DFLL mode: the 1963.5 MHz CVB row (an exact multiple of the DFLL's 25.5 MHz step) and L4T's
 // T210B01 thermal boundaries for the DFLL's floor and cap indices (dt-bindings/thermal/tegra210b01-trips.h
 // TEGRA210B01_DFLL_THERMAL_FLOOR_0 / _CAP_0 / _CAP_1; 1 C hysteresis as the DT trips).
-constexpr unsigned long kDfllRateHz = 1963500000UL;
+constexpr unsigned long kDfllRateHz = 1785600000UL;
 static_assert(kDfllRateHz <= TEGRA_DFLL_CPU_MAX_HZ, "never above the DFLL driver's maximum");
 constexpr int kDfllFloorWarmMilliC = 20000, kDfllCap1MilliC = 64000, kDfllCap2MilliC = 84000;
 constexpr int kDfllBoundaries[] = {kDfllFloorWarmMilliC, kDfllCap1MilliC, kDfllCap2MilliC};

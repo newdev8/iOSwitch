@@ -26,11 +26,11 @@
  * retail units at 768 MHz (nx-common.dtsi:521-523). 13% is T210's fixed/NA ratio at 921.6 MHz for speedo 1700
  * (+10..13% across 768-921.6), the only measured basis for less, and would admit 844.8 MHz (685 mV + 13% = 774 mV)
  * but not 921.6 (710 mV + 13% > 800 mV).
- * This driver overclocks instead: GPU_MHZ takes the CVB table's 1267.2 MHz row, T214's rated top, with the rail
- * ceiling raised to 1400 mV (platform.c GPU_UV_CEIL). The worst NA voltage at 1267.2 MHz plus the same 20% margin
- * (~1362 mV) fits it, and the MAX77812 codes for it. */
+ * This driver overclocks moderately instead: GPU_MHZ takes the 998.4 MHz row, with the rail ceiling at 1100 mV
+ * (platform.c GPU_UV_CEIL). 1267.2 MHz at the 1400 mV it needs cooked the console under sustained load and the
+ * battery could not feed a boot, so the safe sustained profile stays at 998.4. */
 #define FIXED_PLL_MARGIN_PCT 20
-#define GPU_MHZ 1267
+#define GPU_MHZ 998
 #define BOOT_KHZ 76800 /* gm20b_pstates[0], set by gm20b_clk_init() in M1 */
 
 static int clk_prog_khz(struct nvkm_device *device, u32 khz)
@@ -98,7 +98,7 @@ int tgm_clk_raise(char *line, unsigned int len)
 	}
 	if (!khz) {
 		nvxnu_log("tegra-gm20b: %lld MHz is not an L4T B01 GPU rate (76.8 MHz x "
-			  "1..16, 1267.2): GPU stays at "
+			  "1..13): GPU stays at "
 			  "%d kHz\n",
 			  mhz, nvkm_clk_read(device->clk, nv_clk_src_gpc));
 		return 0;

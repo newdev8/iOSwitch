@@ -74,7 +74,7 @@ enum {
 // inside the table's 1170 mV max and the 1060 mV thermal cap. CTCaer's L4T tables go on to 2397 MHz (overclocks,
 // clk-tegra124-dfll-fcpu.c tegra210b01_cpu_max_freq_table "Overclocked from ...", with max_millivolts raised to
 // 1235 mV for them); enable and set_rate refuse anything above this instead (-EINVAL).
-#define TEGRA_DFLL_CPU_MAX_HZ 1963500000UL
+#define TEGRA_DFLL_CPU_MAX_HZ 1785600000UL
 
 // Reads the fuses (CPU speedo/process, L4T speedo-tegra210.c), builds the CVB OPP table and the DFLL LUT, finds
 // VDD_CPU's MAX77812 and initializes the DFLL block in its disabled state with its I2C output off (L4T's probe).
