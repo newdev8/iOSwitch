@@ -27,7 +27,7 @@ jobs:
       - name: Drop the restored disk cache
         run: |
           bazel shutdown || true
-          rm -rf ~/Library/Caches/switch-ios-bazel/disk
+          rm -rf ~/Library/Caches/switch-ios-bazel/disk ~/Library/Caches/bazel/disk "$RUNNER_TEMP"/_temp
       - name: Build the iOS 27 release inputs
         run: bazel build --config=ios27 --//install:prebuilt=local --//boot:composition=release //release:assets
       - name: Package the prelinked kernel
@@ -79,7 +79,7 @@ jobs:
       - name: Drop the restored disk cache
         run: |
           bazel shutdown || true
-          rm -rf ~/Library/Caches/switch-ios-bazel/disk
+          rm -rf ~/Library/Caches/switch-ios-bazel/disk ~/Library/Caches/bazel/disk "$RUNNER_TEMP"/_temp
       - name: Build the translated iOS 27 parts
         run: |
           bazel build --config=ios27 --//install:prebuilt=local \
