@@ -857,6 +857,7 @@ void Device::destroyBuffer(Buffer &b)
     if (b.import)
         release(b.import);
     freeSpan(b.span, b.arena ? Memory::Arena : b.wc ? Memory::Wc : Memory::Pool, b.lease);
+    SWITCH_METAL_DIAGNOSTIC(stats.textureBytes -= b.keptBytes);
     b = {};
 }
 

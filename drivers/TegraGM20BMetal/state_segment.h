@@ -110,9 +110,9 @@ void bindSegment(std::vector<PushBody> &bodies, uint32_t *&start, uint32_t *at, 
 void matrixCall(std::vector<PushBody> &bodies, uint32_t *start, uint32_t *at, uint64_t uniformVa, uint32_t words,
                 uint64_t clampVa, uint32_t clampWords);
 
-// The bodies as the job's pushes, ring stretches at their GPU address (`ringCpu` maps `ringVa`). Returns the ring words.
-uint64_t appendBodies(PushBatches &pushes, const std::vector<PushBody> &bodies, const uint8_t *ringCpu,
-                      uint64_t ringVa);
+// The bodies as the job's pushes, a ring stretch at its first word's GPU address (`ringVa`). Returns the ring words.
+uint64_t appendBodies(PushBatches &pushes, const std::vector<PushBody> &bodies,
+                      const std::function<uint64_t(const uint32_t *)> &ringVa);
 
 // The segment a channel's 3D registers hold from its last bind; binding it again writes nothing. Lost wherever something
 // other than a segment bind may have written one of its methods: a channel made again, a state's extras set back, an

@@ -133,10 +133,6 @@ bool handleEntry(const LayoutEntry &e, RuntimeRecord &rec, PackEntry &p, std::st
         p.kind = e.tex == Tex::DepthTest ? EntryDepthTest : EntryStencilTest;
         p.slot = 0;
         break;
-    case Tex::XrShadow:
-        p.kind = EntryXrShadow;
-        p.slot = e.texSlot;
-        break;
     case Tex::Unknown:
         why = "texture unidentified";
         return false;
@@ -407,7 +403,7 @@ bool assembleRecord(const RecordParts &parts, const std::string &key, const Pack
     p.amplificationCountWord = parts.amplificationCountWord;
     p.arrayLengthWord = parts.arrayLengthWord;
     p.viewportCountWord = parts.viewportCountWord;
-    const uint32_t colors = targets(key) | parts.alphaTargets;
+    const uint32_t colors = targets(key);
     std::map<uint32_t, uint32_t> regs;
     for (const auto &[m, v] : parts.regs)
         if (!foreign(m, colors))
@@ -446,7 +442,6 @@ bool assembleRecord(const RecordParts &parts, const std::string &key, const Pack
     p.controlPoints = parts.controlPoints;
     p.controlPointIndexBytes = parts.controlPointIndexBytes;
     p.flags |= parts.pushMetadata ? PipelinePushMetadata : 0;
-    p.blendColorWord = parts.blendColorWord;
     p.halfBlendColorWord = parts.halfBlendColorWord;
     p.flags |= parts.storageMask ? PipelineStorageMetadata : 0;
     p.flags |= parts.rasterOrdered ? PipelineRasterOrdered : 0;

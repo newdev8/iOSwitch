@@ -29,12 +29,9 @@ struct EmitRegister {
 
 // `keyFields`: the state key's fields before " | v" (Pack::string(keyString), RuntimeRecord::keyString). `blended`: the
 // color attachments m2v hands a Vulkan blend (bit j: attachment j), where its translation is at hand; null: taken from the
-// key, a blend of ONE and ZERO left off. `twoPlane`: its RGB10A8_2P_XR10 colours drawn in their two planes (xr_pass.h),
-// each alpha byte a target of its own, whose targets it gives `alphaTargets` (xrAlphaTargets). False: a field it can't read
-// (`why`)
+// key, a blend of ONE and ZERO left off. False: a field it can't read (`why`)
 bool emitState(const std::string &keyFields, const EmitProgram &vertex, const EmitProgram &fragment,
-               std::vector<EmitRegister> &out, std::string &why, const uint32_t *blended = nullptr,
-               bool twoPlane = false, uint32_t *alphaTargets = nullptr);
+               std::vector<EmitRegister> &out, std::string &why, const uint32_t *blended = nullptr);
 
 // The vertex input's registers (SET_VERTEX_ATTRIBUTE_A(0..31), SET_VERTEX_STREAM_A_FORMAT of each stream) from the key's
 // vertex descriptor fields and `attributes`, the vertex function's [[attribute(n)]] inputs it reads (its reflection's active

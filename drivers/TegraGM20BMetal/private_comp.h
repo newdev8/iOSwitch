@@ -17,8 +17,9 @@
 // range's encode and whether or not the range uses it (Device::compressedFromPlain): the copy engine copies it in a raw
 // job of its own, every layer and sample, which then rewrites its header and those made from it in place (ticAt), so a
 // gpuResourceID or view handed out before keeps its index, and its plain memory goes once that job completed. The
-// worker alone writes its memory's fields, under lock_; no other thread reads them but under lock_ (view creation). One
-// with a raw view stays plain: a view may go, and its header index be reused, before the job runs.
+// worker alone writes its memory's fields, under lock_; no other thread reads them but under lock_ (view creation) or
+// once no move of it can come (a CPU copy, which withdraws a want still there on the worker first: Device::keepPlain).
+// One with a raw view stays plain: a view may go, and its header index be reused, before the job runs.
 #pragma once
 #include <algorithm>
 #include <cstdint>

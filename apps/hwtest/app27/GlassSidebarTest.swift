@@ -113,8 +113,8 @@ struct SidebarRun {
         let reader = await MainActor.run {
             SidebarReader(session: session, test: test, phase: name, band: band, directory: directory)
         }
-        guard session.rearm() else {
-            stopped = "\(name):arm"
+        if let failure = session.rearmFailure() {
+            stopped = "\(name):\(failure)"
             return
         }
         let driver = await MainActor.run { SidebarDriver(scrolls, appearing: appearing) }

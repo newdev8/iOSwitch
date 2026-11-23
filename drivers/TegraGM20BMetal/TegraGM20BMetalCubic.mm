@@ -55,16 +55,13 @@ void packedVariants(SwitchMetalPipeline *p, uint64_t keyHash)
 }
 
 // A variant the compiler refused (`failure` empty) or no compiler made: the command buffers that draw it fail, and its
-// key is named once. A shadowed variant's is named by its pass (TegraGM20BMetalXrShadow.mm reportTwin).
-static void settleUnmade(gm20b::Variant<gm20b::Pipeline> &variant, const std::string &key, bool shadowed,
-                         const std::string &failure)
+// key is named once
+static void settleUnmade(gm20b::Variant<gm20b::Pipeline> &variant, const std::string &key, const std::string &failure)
 {
-    if (!shadowed) {
-        SWITCH_REFUSE_DETAIL("gm20b", "state.variant", gm20b::Pack::fnv(key.data(), key.size()),
-                             "the shader compiler %s the variant %s%s%s: the command buffers that draw it fail",
-                             failure.empty() ? "refused" : "made none of", key.c_str(), failure.empty() ? "" : ": ",
-                             failure.c_str());
-    }
+    SWITCH_REFUSE_DETAIL("gm20b", "state.variant", gm20b::Pack::fnv(key.data(), key.size()),
+                         "the shader compiler %s the variant %s%s%s: the command buffers that draw it fail",
+                         failure.empty() ? "refused" : "made none of", key.c_str(), failure.empty() ? "" : ": ",
+                         failure.c_str());
     if (failure.empty())
         variant.publish(nullptr);
     else
@@ -90,7 +87,6 @@ static gm20b::Variant<gm20b::Pipeline> *renderVariant(SwitchMetalPipeline *p, co
         variant = at->second;
     }
     const std::string key = p->_key + name;
-    const bool shadowed = forms.xrShadows != 0;
     gm20b::Completion *completion = gRM->completion.get();
     if (!completion) {
         variant->failUnserved();
@@ -104,15 +100,14 @@ static gm20b::Variant<gm20b::Pipeline> *renderVariant(SwitchMetalPipeline *p, co
     request.own = !p->_packable;
     request.variant = forms;
     request.resolveDescriptor = true;
-    completion->askVariant(std::move(request),
-                           [variant, key, shadowed](gm20b::Pipeline *made, const std::string &failure) {
-                               if (made)
-                                   variant->publish(made);
-                               else if (failure == gm20b::Completion::kNoCompilerComes)
-                                   variant->failUnserved();
-                               else
-                                   settleUnmade(*variant, key, shadowed, failure);
-                           });
+    completion->askVariant(std::move(request), [variant, key](gm20b::Pipeline *made, const std::string &failure) {
+        if (made)
+            variant->publish(made);
+        else if (failure == gm20b::Completion::kNoCompilerComes)
+            variant->failUnserved();
+        else
+            settleUnmade(*variant, key, failure);
+    });
     return variant.get();
 }
 
@@ -153,29 +148,18 @@ static std::vector<uint8_t> testClasses(const gm20b::Pipeline &pl, uint32_t dept
     return {};
 }
 
-// Every test class a draw can take, and its two-plane form with theirs: a packed state's are the pack's
-// (directpack.mm makeState, which leaves out a shader-side stencil's). Asked together and waited for as the state's
-// own record was, so no draw of them waits on a compile at its queue's head.
+// Every test class a draw can take: a packed state's are the pack's (directpack.mm makeState, which leaves out a
+// shader-side stencil's). Asked together and waited for as the state's own record was, so no draw of them waits on a
+// compile at its queue's head.
 void gm20bMadeVariants(SwitchMetalPipeline *p, MTLRenderPipelineDescriptor *d)
 {
     const std::vector<uint8_t> classes =
         testClasses(*p->_raw, uint32_t(d.depthAttachmentPixelFormat), uint32_t(d.stencilAttachmentPixelFormat));
-    const bool twoPlane =
-        std::any_of(std::begin(p->_raw->colorFormats), std::end(p->_raw->colorFormats), [](uint32_t format) {
-            return gm20b::xrForm(format) == gm20b::XrForm::Planes;
-        });
     std::vector<gm20b::Variant<gm20b::Pipeline> *> made;
-    for (const bool planes : {false, true}) {
-        if (planes && !twoPlane)
-            break;
-        gm20b::RenderVariant forms;
-        forms.twoPlane = planes;
-        if (planes)
-            made.push_back(renderVariant(p, forms));
-        for (const uint8_t tests : classes) {
-            forms.fragmentTests = tests;
-            made.push_back(renderVariant(p, forms));
-        }
+    gm20b::RenderVariant forms;
+    for (const uint8_t tests : classes) {
+        forms.fragmentTests = tests;
+        made.push_back(renderVariant(p, forms));
     }
     awaitSettled(made);
 }
@@ -212,14 +196,6 @@ xrSampledSlots(const gm20b::Pipeline &pl, SwitchMetalTexture *const textures[2][
     return slots;
 }
 
-gm20b::Variant<gm20b::Pipeline> *gm20bRenderVariant(SwitchMetalPipeline *p, const gm20b::CubicBinds &binds,
-                                                    uint8_t tests, bool planes, uint16_t xrSlots,
-                                                    const std::vector<gm20b::WrittenTexture> &written,
-                                                    uint8_t xrShadows)
-{
-    return renderVariant(p, {binds, tests, planes, xrSlots, written, xrShadows});
-}
-
 static bool sameForms(const gm20b::RenderVariant &a, const gm20b::RenderVariant &b)
 {
     const auto sameSampler = [](const gm20b::CubicBinds::Sampler &x, const gm20b::CubicBinds::Sampler &y) {
@@ -229,8 +205,7 @@ static bool sameForms(const gm20b::RenderVariant &a, const gm20b::RenderVariant 
     const auto sameTexture = [](const gm20b::CubicBinds::Texture &x, const gm20b::CubicBinds::Texture &y) {
         return x.slot == y.slot && x.format == y.format && x.stage == y.stage;
     };
-    return a.fragmentTests == b.fragmentTests && a.twoPlane == b.twoPlane && a.xrSlots == b.xrSlots &&
-           a.xrShadows == b.xrShadows && a.written == b.written &&
+    return a.fragmentTests == b.fragmentTests && a.xrSlots == b.xrSlots && a.written == b.written &&
            std::equal(a.cubic.samplers.begin(), a.cubic.samplers.end(), b.cubic.samplers.begin(),
                       b.cubic.samplers.end(), sameSampler) &&
            std::equal(a.cubic.textures.begin(), a.cubic.textures.end(), b.cubic.textures.begin(),
@@ -270,7 +245,6 @@ static gm20b::Variant<gm20b::Pipeline> *preparedVariant(__unsafe_unretained Swit
     _forms.written.clear();
     _forms.fragmentTests = 0;
     _forms.xrSlots = 0;
-    _forms.twoPlane = _xrPlanes;
     if (!base) {
         _formSamplers[0] = _formSamplers[1] = 0;
         return;
@@ -284,7 +258,7 @@ static gm20b::Variant<gm20b::Pipeline> *preparedVariant(__unsafe_unretained Swit
     if ((_forms.fragmentTests && gm20b::zetaHasDepth(zeta)) || (base->rec->shaderTests.flags & gm20b::kShaderTestDepth))
         _cb->_passes[_passAt].shaderTestsDepth = true;
     reboundTextures(*base, _tex[1], _forms.written);
-    if (!_forms.cubic.empty() || _forms.fragmentTests || _forms.twoPlane || !_forms.written.empty())
+    if (!_forms.cubic.empty() || _forms.fragmentTests || !_forms.written.empty())
         _formVariant = preparedVariant(self, _forms);
     if (_cb->_passes[_passAt].xrPlaneBinds)
         _sampledSlots = xrSampledSlots(*base, _tex);
@@ -305,11 +279,9 @@ static gm20b::Variant<gm20b::Pipeline> *preparedVariant(__unsafe_unretained Swit
                 gm20b::addSlot(standIns[stage], slot);
             });
     }
-    uint16_t drawnSlots = 0;
     if (_sampledVariant) {
         if (_sampledVariant->state() == gm20b::Variant<gm20b::Pipeline>::State::Ready) {
             variant = _sampledVariant;
-            drawnSlots = _forms.xrSlots;
         } else {
             standIns[1] = _sampledSlots[1];
         }
@@ -320,8 +292,6 @@ static gm20b::Variant<gm20b::Pipeline> *preparedVariant(__unsafe_unretained Swit
         gm20b::forEachSlot(standIns[stage], [&](uint32_t slot) {
             _cb->_xrStandIns.insert(_tex[stage][slot]);
         });
-    gm20bXrShadowDraw(_cb, _pipe, *base, variant, _forms.cubic, _forms.fragmentTests, _forms.twoPlane, drawnSlots,
-                      _forms.written);
     if (base != _drawn || variant != _drawnVariant) {
         Cmd state = cmd(OpPipeline);
         state.obj = (__bridge void *)_pipe;

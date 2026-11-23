@@ -83,7 +83,7 @@ static gm20b::ProbeSurface probeSurface(const gm20b::Texture &t, uint32_t fmt2d)
     return nil;
 }
 
-// `settled` called once every compressed memory the device was asked for so far is made or refused (gpu.h
+// `settled` called once every compressed memory and ZBC entry the device was asked for so far is made or refused (gpu.h
 // compWhenSettled): on the compression thread with no driver lock held, or on this thread before the call returns when
 // none is asked. Nil, else why not.
 - (NSString *)switchMetalProbeCompressionSettled:(void (^)(void))settled
@@ -115,6 +115,34 @@ static gm20b::ProbeSurface probeSurface(const gm20b::Texture &t, uint32_t fmt2d)
     gm20b::gEventClockHeld.store(held + ms.longLongValue * 1000000, std::memory_order_release);
     wakeSubmit(nullptr);
     return ms;
+}
+
+// HW Test's probes of the compression and zcull cases left (gpu.h probeZetaLayers .. probeZcullCriterion), each while
+// `on`: switches, not one-shot arms, since a probe's texture is made twice where its first finds no compressed memory
+// made (CompressionSettled.remade). Nil.
+- (NSString *)switchMetalProbeZetaLayers:(NSNumber *)on
+{
+    gRM->raw->probeZetaLayers.store(on.boolValue, std::memory_order_release);
+    return nil;
+}
+
+- (NSString *)switchMetalProbeZetaShadow:(NSNumber *)on
+{
+    gRM->raw->probeZetaShadow.store(on.boolValue, std::memory_order_release);
+    return nil;
+}
+
+- (NSString *)switchMetalProbeZcullMixed:(NSNumber *)on
+{
+    gRM->raw->probeZcullMixed.store(on.boolValue, std::memory_order_release);
+    return nil;
+}
+
+// `packed`: byte 0 SET_ZCULL_CRITERION's SFUNC, byte 1 SREF, byte 2 SMASK; 0 (or nil) off: NVK's NEVER
+- (NSString *)switchMetalProbeZcullCriterion:(NSNumber *)packed
+{
+    gRM->raw->probeZcullCriterion.store(packed.unsignedIntValue & 0xffffff, std::memory_order_release);
+    return nil;
 }
 
 // Private textures made while `on` is true stay on plain memory (private_comp.h), for a probe's uncompressed

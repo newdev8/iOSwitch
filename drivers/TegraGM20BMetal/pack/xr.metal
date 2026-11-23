@@ -86,7 +86,6 @@ static half4 bgra10Srgb(uint4 f)
     return half4(srgbColor(f.z), srgbColor(f.y), srgbColor(f.x), color(clamp(f.w, 384u, 894u)));
 }
 
-// Also the load state of a BGR10_XR_sRGB target's stand-in (runtime/format_standin.h formatLoadState)
 fragment half4 xr_bgr10_srgb_frag(Out in [[stage_in]], texture2d<uint, access::read> codes [[texture(0)]])
 {
     return bgr10Srgb(codes.read(uint2(in.position.xy)).r);
@@ -98,27 +97,10 @@ fragment half4 xr_bgra10_frag(Out in [[stage_in]], texture2d<uint, access::read>
     return half4(color(f.z), color(f.y), color(f.x), color(clamp(f.w, 384u, 894u)));
 }
 
-// Also the load state of a BGRA10_XR_sRGB target's stand-in (runtime/format_standin.h formatLoadState)
 fragment half4 xr_bgra10_srgb_frag(Out in [[stage_in]], texture2d<uint, access::read> codes [[texture(0)]])
 {
     return bgra10Srgb(codes.read(uint2(in.position.xy)) >> 6);
 }
-
-// A multisampled target's stand-in's loads: each sample from that sample's codes, the fragment run once a sample
-#define XR_SRGB_PER_SAMPLE(count)                                                                                          \
-    fragment half4 xr_bgr10_srgb_ms##count##_frag(Out in [[stage_in]], uint k [[sample_id]],                             \
-                                                  texture2d_ms<uint, access::read> codes [[texture(0)]])                 \
-    {                                                                                                                      \
-        return bgr10Srgb(codes.read(uint2(in.position.xy), k).r);                                                          \
-    }                                                                                                                      \
-    fragment half4 xr_bgra10_srgb_ms##count##_frag(Out in [[stage_in]], uint k [[sample_id]],                            \
-                                                   texture2d_ms<uint, access::read> codes [[texture(0)]])                \
-    {                                                                                                                      \
-        return bgra10Srgb(codes.read(uint2(in.position.xy), k) >> 6);                                                      \
-    }
-
-XR_SRGB_PER_SAMPLE(2)
-XR_SRGB_PER_SAMPLE(4)
 
 fragment half4 xr_planes_frag(Out in [[stage_in]], texture2d<uint, access::read> codes [[texture(0)]])
 {
@@ -139,7 +121,7 @@ static half3 srgbWord(uint w)
 }
 
 // RGB10A8_2P_XR10_sRGB over a surface's two planes (runtime/xr.h xrConversionOf): its word through BGR10_XR_sRGB's
-// colour reads, its alpha byte linear. Also the load state of such a target's stand-in (runtime/format_standin.h)
+// colour reads, its alpha byte linear
 fragment half4 xr_two_planes_srgb_frag(Out in [[stage_in]], texture2d<uint, access::read> words [[texture(0)]],
                                        texture2d<uint, access::read> alphas [[texture(1)]])
 {
@@ -148,7 +130,7 @@ fragment half4 xr_two_planes_srgb_frag(Out in [[stage_in]], texture2d<uint, acce
 }
 
 // RGB10A8_2P_XR10_sRGB of a descriptor (runtime/xr.h xrConversionOf): a texel's word and alpha byte side by side, read
-// as xr_two_planes_srgb_frag reads them from two planes. Also the load state of such a target's stand-in
+// as xr_two_planes_srgb_frag reads them from two planes
 fragment half4 xr_planes_srgb_frag(Out in [[stage_in]], texture2d<uint, access::read> codes [[texture(0)]])
 {
     const uint2 t = codes.read(uint2(in.position.xy)).rg;
@@ -174,35 +156,6 @@ fragment Planes xr_planes_split_frag(Out in [[stage_in]], texture2d<uint, access
 {
     const uint2 t = image.read(uint2(in.position.xy)).rg;
     return {t.x, t.y & 0xff};
-}
-
-// A pass's half shadow of such an attachment (runtime/xr_shadow.h): Metal's tile value of its codes, which holds no colour
-// code past 1022 (a code 1023 reads as 1022 there, where a texture read takes it as 639 / 510)
-static half tileColor(uint code)
-{
-    return color(min(code, 1022u));
-}
-
-static half3 tileWord(uint w)
-{
-    return half3(tileColor(w >> 20 & 0x3ff), tileColor(w >> 10 & 0x3ff), tileColor(w & 0x3ff));
-}
-
-fragment half4 xr_tile_bgr10_frag(Out in [[stage_in]], texture2d<uint, access::read> codes [[texture(0)]])
-{
-    return half4(tileWord(codes.read(uint2(in.position.xy)).r), 1.0h);
-}
-
-fragment half4 xr_tile_bgra10_frag(Out in [[stage_in]], texture2d<uint, access::read> codes [[texture(0)]])
-{
-    const uint4 f = codes.read(uint2(in.position.xy)) >> 6;
-    return half4(tileColor(f.z), tileColor(f.y), tileColor(f.x), color(clamp(f.w, 384u, 894u)));
-}
-
-fragment half4 xr_tile_planes_frag(Out in [[stage_in]], texture2d<uint, access::read> codes [[texture(0)]])
-{
-    const uint2 t = codes.read(uint2(in.position.xy)).rg;
-    return half4(tileWord(t.x), quotient(int(t.y & 0xff), 255));
 }
 
 // A GPU copy through a BGRA10_XR or BGRA10_XR_sRGB texture Metal keeps compressed (runtime/TegraGM20BMetalCopyClamp.h): the copied

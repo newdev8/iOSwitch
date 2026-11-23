@@ -27,6 +27,7 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 #include "glass_mem_row.h"
@@ -182,7 +183,7 @@ public:
         bool moved = false;
         if (tic) {
             Header &h = headers_[tic];
-            moved = h.key == item.key && h.hash != header;
+            moved = h.key == item.key && h.hash != header && !rewriting_.count(tic);
             h = {item.key, header};
         }
         char state[5];
@@ -231,6 +232,20 @@ public:
         refs_.clear();
         headers_.clear();
         open_ = GlassMemCb();
+    }
+
+    // A move onto compressed memory (private_comp.cpp compressedFromPlain) rewrites header `tic` in a job of its own,
+    // which may land while a later command buffer's draws sample the texture at its new memory: from the move (`on`)
+    // until that job completed, a change of the header's bytes is the move's; then its next sample is recorded afresh
+    void rewriting(uint32_t tic, bool on)
+    {
+        std::lock_guard<gm20b::Mutex> l(lock_);
+        if (on) {
+            rewriting_.insert(tic);
+            return;
+        }
+        rewriting_.erase(tic);
+        headers_.erase(tic);
     }
 
     // `key` died (a view's header `tic` alone, when `tic`)
@@ -459,6 +474,7 @@ private:
     std::unordered_map<uint64_t, Write> writes_;
     std::unordered_map<uint64_t, Ref> refs_;        // by key plus level: the row read at its last write's end
     std::unordered_map<uint32_t, Header> headers_;  // by header index: whose it is and its bytes' hash
+    std::unordered_set<uint32_t> rewriting_;        // header indices a move's job has yet to rewrite
     GlassMemCb open_;
 };
 

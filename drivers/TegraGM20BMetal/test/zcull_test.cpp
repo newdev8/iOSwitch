@@ -83,6 +83,30 @@ TEST(Zcull, RegionWordsFit)
     EXPECT_LE(uint32_t(p.at - words.data()), gm20b::kZcullRegionWords);
 }
 
+// A region's SET_ZCULL_CRITERION is NVK's NEVER unless a criterion is given (HW Test's zc_stencil_criterion probe):
+// SFUNC in bits 0-2, SREF 16-23, SMASK 24-31, NO_INVALIDATE clear
+TEST(Zcull, ARegionTakesTheCriterionItIsGiven)
+{
+    gm20b::ZcullRegion region;
+    ASSERT_TRUE(gm20b::zcullRegion(kReference, 0, 0, 1280, 720, region));
+    for (const uint32_t criterion : {0u, gm20b::zcullCriterion(2, 1, 0xff)}) {
+        std::vector<uint32_t> words(gm20b::kZcullRegionWords + 8);
+        gm20b::Push p{words.data(), words.data() + words.size()};
+        gm20b::zcullRegionWords(p, region, 252, gm20b::kZcullGreater, 0, 0, criterion);
+        bool found = false;
+        for (const uint32_t *w = words.data(); w < p.at; w++)
+            if ((*w >> 29) == 4 && ((*w & 0xfff) << 2) == 0x0dd8) {  // an immediate's data is its count field
+                EXPECT_EQ(*w >> 16 & 0x1fff, criterion & 0x1fff);
+                found = true;
+            } else if ((*w >> 29) == 1 && ((*w & 0xfff) << 2) == 0x0dd8 && w + 1 < p.at) {
+                EXPECT_EQ(w[1], criterion);
+                found = true;
+            }
+        EXPECT_TRUE(found) << criterion;
+    }
+    EXPECT_EQ(gm20b::zcullCriterion(2, 1, 0xff), 0xff010002u);
+}
+
 gm20b::DepthStencilDesc depth(uint8_t compare, bool write)
 {
     gm20b::DepthStencilDesc d;

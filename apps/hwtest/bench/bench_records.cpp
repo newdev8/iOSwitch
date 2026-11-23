@@ -97,8 +97,8 @@ bool plainState(const gm20b::PackPipeline &p, const char *key)
     return !strncmp(key, "samples=1 ", 10) && strstr(key, " ds=0/0 ") && color(key, 0, c0) && c0.mask == 15 &&
            !c0.blend &&
            !(p.flags & (gm20b::PipelineFetches | gm20b::PipelineBarrierForm | gm20b::PipelineStorageMetadata)) &&
-           !p.storageMask && !p.shaderTests.flags && !p.blendColorWord && !p.halfBlendColorWord &&
-           p.vertexSlot != gm20b::kNoSlot && p.vertexStride >= 16 && plainEntries(p) && positionFirst(p, key);
+           !p.storageMask && !p.shaderTests.flags && !p.halfBlendColorWord && p.vertexSlot != gm20b::kNoSlot &&
+           p.vertexStride >= 16 && plainEntries(p) && positionFirst(p, key);
 }
 
 gm20b::CapturedProgram captured(const gm20b::Pack &pack, uint32_t index)

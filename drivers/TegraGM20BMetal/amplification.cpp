@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// A render encoder's vertex amplification and bind strides (gpu.h RenderEncoder). A state of vertex amplification is
+// A render encoder's vertex amplification and bind strides (render_encoder.h). A state of vertex amplification is
 // m2v's variant of one draw per amplification (bind/graphics.rs amplification_draws): each draw is drawn once per
 // amplification, in order, its id in the state's AmplificationId push word, as Metal renders every primitive of one
 // amplification before the next's. The GPU repeats it: one call of an amplify macro (mme.h) per Metal draw, which

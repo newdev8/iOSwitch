@@ -123,8 +123,14 @@ bool ResourceSet::attempt(Kernel &k, std::vector<TegraGM20BAbiSurfaceUse> &uses,
     for (size_t i = 0; i < members_.size(); ++i) {
         if (registered(uses, members_[i].handle))
             members_[kept++] = members_[i];
-        else if (members_[i].always)
+        else if (members_[i].always) {
+            os_log_error(setLog(),
+                         "SwitchMetal: the kernel keeps BO %llu (%llu KiB at 0x%llx), which every job uses, out of "
+                         "resource set %u: a use of every job from now on",
+                         (unsigned long long)members_[i].handle, (unsigned long long)(members_[i].bytes >> 10),
+                         (unsigned long long)members_[i].va, set);
             outside_.push_back(members_[i]);
+        }
     }
     removals_ += uint32_t(members_.size() - kept);
     members_.resize(kept);

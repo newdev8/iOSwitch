@@ -13,7 +13,7 @@ namespace {
 
 // Any change to a field's bytes or meaning takes the next magic: the compiler's request log (compiler/compiler_log.h)
 // keeps requests across builds and replays them, so a request of another layout must be refused whole
-constexpr char kRequestMagic[8] = {'S', 'W', 'C', 'R', 'E', 'Q', '0', '5'};
+constexpr char kRequestMagic[8] = {'S', 'W', 'C', 'R', 'E', 'Q', '0', '6'};
 constexpr char kNameMagic[8] = {'S', 'W', 'R', 'A', 'W', 'N', 'M', '2'};
 // A cubic bind's sampler flag byte: bit 0 normalized, bit 1 the vertex stage, no other; its texture's slot byte's top
 // bit: the vertex stage. Each stage binds up to 16 samplers
@@ -76,8 +76,6 @@ void writeVariant(Writer &w, const RenderVariant &v)
         w.value(t.format);
     }
     w.value(v.fragmentTests);
-    w.value(v.xrShadows);
-    w.value(uint8_t(v.twoPlane));
     w.value(v.xrSlots);
     w.value(uint32_t(v.written.size()));
     for (const WrittenTexture &t : v.written) {
@@ -110,8 +108,6 @@ bool readVariant(Reader &r, RenderVariant &v)
         v.cubic.textures.push_back({uint8_t(slot & ~kCubicVertexSlot), r.value<uint32_t>(), stage});
     }
     v.fragmentTests = r.value<uint8_t>();
-    v.xrShadows = r.value<uint8_t>();
-    v.twoPlane = r.value<uint8_t>() != 0;
     v.xrSlots = r.value<uint16_t>();
     const uint32_t written = r.value<uint32_t>();
     if (!r.ok() || written > kWrittenSlots)

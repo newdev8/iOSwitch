@@ -46,8 +46,6 @@ bool variantOf(const std::string &name, gm20b::RenderVariant &v, std::map<std::s
             forms["cubic"]++;
         else if (segment.rfind("tests=", 0) == 0 && (v.fragmentTests = uint8_t(atoi(segment.c_str() + 6))))
             forms["tests"]++;
-        else if (segment == "xr2p" && (v.twoPlane = true))
-            forms["xr2p"]++;
         else if (segment.rfind("xrs=", 0) == 0 && (v.xrSlots = uint16_t(strtoul(segment.c_str() + 4, nullptr, 10))))
             forms["xrs"]++;
         else if (gm20b::parseWritten(segment, v.written))

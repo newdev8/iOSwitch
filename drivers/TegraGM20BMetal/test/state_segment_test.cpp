@@ -109,7 +109,9 @@ struct Body {
         if (p.at > start)
             bodies.push_back({start, p.at});
         gm20b::PushBatches pushes;
-        gm20b::appendBodies(pushes, bodies, reinterpret_cast<const uint8_t *>(ring), kRingVa);
+        gm20b::appendBodies(pushes, bodies, [this](const uint32_t *word) {
+            return kRingVa + uint64_t(word - ring) * 4;
+        });
         return pushes;
     }
 };

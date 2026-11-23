@@ -493,22 +493,15 @@ void Device::build(Pipeline &pl, const PackPipeline &pp, const PlacedProgram &vs
         const int n = sscanf(at, " c%u=%u:%u:%u:%u:%u:%u:%u:%u:%u", &c, &k.format, &k.writeMask, &k.blending, &k.srcRGB,
                              &k.dstRGB, &k.rgbOp, &k.srcAlpha, &k.dstAlpha, &k.alphaOp);
         if (n >= 4 && c < 8) {
-            constexpr unsigned kRGB8_444_2P = 542,
-                               kRGBA16Float = 115;  // rendered through its stand-in (Texture::planarStandIn)
-            pl.colorFormats[c] = k.format == kRGB8_444_2P ? kRGBA16Float : k.format;
+            // rendered through its stand-in (Texture::planarStandIn; an extended-range one's, format_standin.h)
+            constexpr unsigned kRGB8_444_2P = 542, kRGBA16Float = 115;
+            pl.colorFormats[c] = k.format == kRGB8_444_2P || xrTarget(k.format) ? kRGBA16Float : k.format;
             if (colorReadsDestination(k))
                 pl.readBits |= uint8_t(1u << c);
             // MTLBlendFactorBlendColor, OneMinusBlendColor, BlendAlpha, OneMinusBlendAlpha
             for (const unsigned factor : {k.srcRGB, k.dstRGB, k.srcAlpha, k.dstAlpha})
                 pl.constantBlend |= k.blending && factor >= 11 && factor <= 14;
         }
-    }
-    if (pp.flags & PipelineTwoPlane) {
-        const std::array<int8_t, 8> alpha = xrAlphaSlots(pl.colorFormats);
-        xrPlaneFormats(pl.colorFormats);
-        for (uint32_t j = 0; j < 8; j++)
-            if (alpha[j] >= 0 && (pl.readBits >> j & 1))
-                pl.readBits |= uint8_t(1u << alpha[j]);
     }
     // attribute 0 ("a0=<MTLVertexFormat>:<offset>:<buffer>:<stride>:<step function>:..."): MTLVertexFormatFloat2, Float3
     // or Float4, per vertex, from the stream's buffer

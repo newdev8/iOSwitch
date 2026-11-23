@@ -10,9 +10,10 @@ from tools.devicerun import renamed
 
 PASS, FAIL, NO_DATA, INFO, NA = 'PASS', 'FAIL', 'NO-DATA', 'INFO', 'N/A'
 
-# count | rate (per minute over the log's span) | boots (with a match) | agg(field) or agg(a/b*k): then OP number.
+# count | rate (per minute over the log's span) | boots (with a match) | repeats (lines past the first of a boot with
+# the same `show` fields) | agg(field) or agg(a/b*k): then OP number.
 RULE = re.compile(
-    r'^(?:(?P<metric>count|rate|boots)|(?P<agg>sum|max|min|last|p50|p99)\((?P<expr>[\w/*]+)\))'
+    r'^(?:(?P<metric>count|rate|boots|repeats)|(?P<agg>sum|max|min|last|p50|p99)\((?P<expr>[\w/*]+)\))'
     r'\s*(?P<op>==|!=|<=|>=|<|>)\s*(?P<value>-?[\d.]+)$'
 )
 WHERE = re.compile(r'^(?P<field>\w+)\s*(?P<op>==|!=|<=|>=|<|>)\s*(?P<value>-?[\d.]+)$')
@@ -274,6 +275,9 @@ def measure(check: Check, matches: list[dict], minutes: float) -> tuple[float | 
         return len(matches), describe(check, matches, minutes)
     if m['metric'] == 'boots':
         return len({f['boot'] for f in matches}), describe(check, matches, minutes)
+    if m['metric'] == 'repeats':
+        seen = Counter((f['boot'], *(str(f.get(k, '?')) for k in check.show)) for f in matches)
+        return sum(n - 1 for n in seen.values()), describe(check, matches, minutes)
     if m['metric'] == 'rate':
         rate = len(matches) / minutes if minutes else 0.0
         return rate, f'{rate:.2f}/min over {minutes:.1f} min ({len(matches)} lines)'

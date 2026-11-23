@@ -121,18 +121,6 @@ void expectRefusedAt(const gm20b::CompileRequest &r, const std::string &field)
     EXPECT_NE(why.find("; the compiler's "), std::string::npos) << why;
 }
 
-TEST(CompileRequestForms, TwoPlaneColours)
-{
-    gm20b::RenderVariant planes;
-    planes.twoPlane = true;
-    const Asked blur = render(blurDownsample(), planes), solid = render(quad(MTLPixelFormat(550)), planes);
-    expectTaken(blur);
-    expectTaken(solid);
-    gm20b::CompileRequest bare = blur.request;
-    bare.variant = {};
-    expectRefusedAt(bare, "| xr2p");
-}
-
 TEST(CompileRequestForms, WrittenFormatsAndSampledTwoPlaneTextures)
 {
     gm20b::RenderVariant written;
@@ -351,13 +339,11 @@ TEST(CompileRequestForms, TheCompilersDescriptorCarriesEveryFieldTheClientRead)
     gm20b::RenderVariant v;
     v.cubic.samplers.push_back({1, 2, 2, 0, 1, false});
     v.fragmentTests = 3;
-    v.twoPlane = true;
     v.xrSlots = 6;
     v.written = {{2, 63}};
     const gm20b::ProbeTextures t = gm20b::probeTexturesOf(v);
     EXPECT_EQ(t.cubic.key(), v.cubic.key());
     EXPECT_EQ(t.fragmentTests, 3);
-    EXPECT_TRUE(t.twoPlane);
     EXPECT_EQ(t.xrSlots, 6);
     EXPECT_TRUE(t.written == v.written);
 }
@@ -385,10 +371,8 @@ TEST(CompileRequestForms, EveryFieldGoesOverTheWire)
     r.variant.cubic.samplers.push_back({0, 2, 2, 2, 0, true});
     r.variant.cubic.textures.push_back({0, 80});
     r.variant.fragmentTests = 2;
-    r.variant.twoPlane = true;
     r.variant.xrSlots = 3;
     r.variant.written = {{1, 23}};
-    r.variant.xrShadows = 1;
     r.kernel.stageIn.attributes[0] = {29, 0, 1, 16, 5, 1};
     const std::string bytes = gm20b::encodeRequest(r);
     gm20b::CompileRequest back;
@@ -448,10 +432,6 @@ TEST(CompileRequestForms, EveryFieldGoesOverTheWire)
          [](auto &q) {
              q.variant.fragmentTests = 1;
          }},
-        {"two planes",
-         [](auto &q) {
-             q.variant.twoPlane = false;
-         }},
         {"sampled two-plane slots",
          [](auto &q) {
              q.variant.xrSlots = 1;
@@ -459,10 +439,6 @@ TEST(CompileRequestForms, EveryFieldGoesOverTheWire)
         {"written",
          [](auto &q) {
              q.variant.written[0].format = 63;
-         }},
-        {"extended-range shadows",
-         [](auto &q) {
-             q.variant.xrShadows = 6;
          }},
         {"stage input",
          [](auto &q) {
@@ -552,12 +528,12 @@ TEST(CompileRequestForms, AComputeStatesConstantsStageInputAndLinkedFunctionsAre
 TEST(CompileRequestForms, TheRefusalNamesTheFirstFieldTheKeysPartAt)
 {
     using switch_compiler::keyDifference;
-    const std::string mine = "samples=1 topo=0 c0=80:15 amp=2  | v quad_vertex  | f solid_fragment | xr2p";
-    EXPECT_EQ(keyDifference(mine, "samples=1 topo=0 c0=80:15  | v quad_vertex  | f solid_fragment | xr2p")
+    const std::string mine = "samples=1 topo=0 c0=80:15 amp=2  | v quad_vertex  | f solid_fragment | tests=2";
+    EXPECT_EQ(keyDifference(mine, "samples=1 topo=0 c0=80:15  | v quad_vertex  | f solid_fragment | tests=2")
                   .rfind("first differing field \"amp=2\" in its key, \"| v\" in the compiler's", 0),
               0u);
     EXPECT_EQ(keyDifference(mine, "samples=1 topo=0 c0=80:15 amp=2  | v quad_vertex  | f solid_fragment")
-                  .rfind("first differing field \"| xr2p\" in its key, \"(end)\" in the compiler's", 0),
+                  .rfind("first differing field \"| tests=2\" in its key, \"(end)\" in the compiler's", 0),
               0u);
     const std::string longKey = std::string(2000, 'x') + " a=1";
     const std::string why = keyDifference(longKey, std::string(2000, 'x') + " a=2");

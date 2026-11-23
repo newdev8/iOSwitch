@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
-// The blit encoder's probe ops (gpu.h BlitEncoder::probe, CommandBuffer::probeResolve): debug builds only
+// The blit encoder's probe ops (blit_encoder.h BlitEncoder::probe, command_buffer.h CommandBuffer::probeResolve): debug
+// builds only
 #include "fx/fx_image.h"
 #include "gpu.h"
 #include "gm20b_gpu_internal.h"

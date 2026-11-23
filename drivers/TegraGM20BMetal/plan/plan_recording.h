@@ -37,7 +37,6 @@ struct ResourceFacts {
         ImageStale = 1u << 11,    // its converted image is behind its planes (surface seed, writes, native generation)
         MipChain2D = 1u << 12,    // its chain's levels are the 2D engine's (gm20b::Texture::chain->fmt2d)
         RotatedPlane = 1u << 14,  // a drawable on the rotated (landscape) plane
-        TwoPlaneXr = 1u << 15,    // RGB10A8_2P_XR10 over Metal's two planes
         StoredMultisample = 1u << 16,
         PlanarTarget = 1u << 17,        // a planar YCbCr colour attachment
         UnsupportedSampler = 1u << 18,  // an address mode or border the sampler header cannot express

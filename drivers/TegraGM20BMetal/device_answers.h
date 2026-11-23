@@ -15,7 +15,10 @@
 // eight targets of the widest colour a pixel, tier-2 argument buffers through the handle tables (heap_tables.h),
 // and 128 interpolated components on 21H461 (24B119 keeps Metal 27's ceiling of 124).
 // Below the identity, on purpose (the owner's ruling, 14 Nov): no rasterization rate map of any layer count, as GM20B has no
-// variable-rate unit and none is emulated.
+// variable-rate unit and none is emulated. No function pointers: the driver makes no visible function table and no
+// function handle (both refused: harness/refused.txt), and a YES sends 24B119's RenderBox uber_fragment states, Core
+// Image's ci_ubershader kernels and CoreRE's vertex functions to tables it answers nil for; at NO they take their
+// linked-function routes (an M4 Max answers YES to all three).
 // An argument answer holds `value` for every argument in [first, last] and 0 elsewhere.
 #pragma once
 #include <cstddef>
@@ -144,6 +147,9 @@ inline constexpr Count kCounts21H461[] = {
     {"deviceLinearReadOnlyTextureAlignmentBytes", 32, false},
     {"areRasterOrderGroupsSupported", 1, true},
     {"supportsRasterOrderGroups", 1, true},
+    {"supportsFunctionPointers", 0, true},
+    {"supportsFunctionPointersFromRender", 0, true},
+    {"supportsFunctionPointersFromMesh", 0, true},
     {"isDepth24Stencil8PixelFormatSupported", 0, true},
     {"areProgrammableSamplePositionsSupported", 1, true},
     {"supports32BitFloatFiltering", chipFeature(SWITCH_GM20B_FEATURE_3D_H9), true},
@@ -284,6 +290,9 @@ inline constexpr Count kCounts24B119[] = {
     {"deviceLinearReadOnlyTextureAlignmentBytes", 32, false},
     {"areRasterOrderGroupsSupported", 1, true},
     {"supportsRasterOrderGroups", 1, true},
+    {"supportsFunctionPointers", 0, true},
+    {"supportsFunctionPointersFromRender", 0, true},
+    {"supportsFunctionPointersFromMesh", 0, true},
     {"isDepth24Stencil8PixelFormatSupported", 0, true},
     {"areProgrammableSamplePositionsSupported", 1, true},
     {"supports32BitFloatFiltering", chipFeature(SWITCH_GM20B_FEATURE_3D_H9), true},

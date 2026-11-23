@@ -87,6 +87,8 @@ struct PlaneDecision {
     OSObject *ui;
     bool uiNew, blank, planeChange;
     bool waitSlot;
+    const char *waitWhy;  // waitSlot: which slot waits, with its planeRetry code
+    int waitCode;
     PlaneSet set;
 };
 

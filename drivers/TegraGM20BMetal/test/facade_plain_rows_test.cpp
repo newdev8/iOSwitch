@@ -5,6 +5,8 @@
 // path makes them through their pools, and stores a pass's rows from the pool by the overlap state of the texel's size.
 #include "facade_pass_scene.h"
 #include "../plain_rows.h"
+#include "../../../kits/SwitchGM20B/SwitchGM20B3D.h"
+#include "../../../kits/SwitchGM20BEmit/SwitchGM20BPushDecode.h"
 #include <string>
 #include <vector>
 
@@ -154,6 +156,111 @@ void storesKeepTheRowAppleLandsLast()
     EXPECT_EQ(misses, 0) << "of " << apple.size() << " elements two or more rows reach";
 }
 
+// A whole copy from a buffer into RGBA32Uint 40x40 over rows of 128 bytes: through the pool, its rows then stored by
+// the overlap state (an M4 Max's copies land by 32x32 tiles, not in row order): with the state in the pack the
+// command buffer draws into the plane's rows; without it, it fails
+id<MTLCommandBuffer> copiedWhole(id<MTLDevice> d, SwitchMetalTexture *t)
+{
+    const Shape c = {"RGBA32Uint 40x40 over rows 128", MTLPixelFormatRGBA32Uint, 40, 40, 128, 16};
+    id<MTLBuffer> codes = [d newBufferWithLength:c.width * c.height * c.bytes options:MTLResourceStorageModeShared];
+    id<MTLCommandBuffer> cb = [[d newCommandQueue] commandBuffer];
+    id<MTLBlitCommandEncoder> b = [cb blitCommandEncoder];
+    [b copyFromBuffer:codes
+               sourceOffset:0
+          sourceBytesPerRow:c.width * c.bytes
+        sourceBytesPerImage:c.width * c.height * c.bytes
+                 sourceSize:MTLSizeMake(c.width, c.height, 1)
+                  toTexture:(id<MTLTexture>)t
+           destinationSlice:0
+           destinationLevel:0
+          destinationOrigin:MTLOriginMake(0, 0, 0)];
+    [b endEncoding];
+    [cb commit];
+    [cb waitUntilCompleted];
+    return cb;
+}
+
+SwitchMetalTexture *rows128(id<MTLDevice> d)
+{
+    const Shape c = {"RGBA32Uint 40x40 over rows 128", MTLPixelFormatRGBA32Uint, 40, 40, 128, 16};
+    IOSurfaceRef s = planesOf(c);
+    if (!s)
+        return nil;
+    SwitchMetalTexture *t = texture(d, s, c.format, c.width, c.height);
+    CFRelease(s);
+    return t;
+}
+
+void aWholeCopyDrawsTheRowsFromThePool()
+{
+    id<MTLDevice> d = device(true);
+    ASSERT_TRUE(d != nil);
+    SwitchMetalTexture *t = rows128(d);
+    ASSERT_TRUE(t != nil && t->_gm20bOk && t->_raw.storeView);
+    const size_t first = kernel_model::model.jobs.size();
+    expectRaw(d, copiedWhole(d, t));
+    bool drawn = false;
+    uint64_t address = 0;
+    for (size_t j = first; j < kernel_model::model.jobs.size(); ++j) {
+        const auto &words = kernel_model::model.jobs[j].words;
+        std::vector<switch_gm20b_method> methods(words.size());
+        const long count = switch_gm20b_push_decode(words.data(), words.size(), methods.data(), methods.size());
+        ASSERT_GE(count, 0);
+        for (long k = 0; k < count; ++k) {
+            const auto &m = methods[k];
+            if (m.subchannel != gm20b::SUBC_3D)
+                continue;
+            if (m.method == NVB197_SET_COLOR_TARGET_A(0))
+                address = uint64_t(m.value) << 32;
+            else if (m.method == NVB197_SET_COLOR_TARGET_B(0))
+                drawn |= (address | m.value) == t->_raw.va;
+        }
+    }
+    EXPECT_TRUE(drawn) << "the plane's rows are a pass's target";
+}
+
+void aWholeCopyWithoutTheStateFails()
+{
+    id<MTLDevice> d = device(false);
+    ASSERT_TRUE(d != nil);
+    SwitchMetalTexture *t = rows128(d);
+    ASSERT_TRUE(t != nil && t->_gm20bOk && t->_raw.storeView);
+    EXPECT_EQ(copiedWhole(d, t).status, MTLCommandBufferStatusError) << "its rows are stored by the overlap state";
+}
+
+// The rows a whole copy from a buffer of every texel's code into RGBA32Uint 40x40 over rows of 128 bytes leaves in
+// elements 8 to 343 on an M4 Max (ten runs alike, macOS 27.2.1; '0' + row), which the overlap state's copy order keeps
+constexpr const char *kAppleCopiedRows =
+    "000000002222222222222222444444444444444466666666666666668888888888888888::::::::::::::::<<<<<<<<<<<<<<<<>>>>>>>>"
+    ">>>>>>>>@@@@@@@@@@@@@@@@BBBBBBBBBBBBBBBBDDDDDDDDDDDDDDDDFFFFFFFFFFFFFFFFHHHHHHHHHHHHHHHHJJJJJJJJJJJJJJJJLLLLLLLL"
+    "LLLLLLLLNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNOOOOOOOOOOOOOOOOTTTTTTTTTTTTTTTTVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVWWWWWWWW";
+
+void copiesKeepTheRowAppleLandsLast()
+{
+    id<MTLDevice> d = device(true);
+    ASSERT_TRUE(d != nil);
+    SwitchMetalTexture *t = rows128(d);
+    ASSERT_TRUE(t != nil && t->_gm20bOk && t->_raw.storeView);
+    ASSERT_TRUE(gm20b::copiedThroughPool(t->_raw, 0, 0, 40, 40));
+    EXPECT_FALSE(gm20b::copiedThroughPool(t->_raw, 0, 0, 39, 40)) << "a part keeps the copy engine's rows";
+    gm20b::Texture scratch;
+    gm20b::OverlapRows order = gm20b::plainRowsOrder(t->_raw, gm20b::storedRows(t->_raw, t->_raw, scratch));
+    order.copied = 1;
+    const std::string apple = kAppleCopiedRows;
+    int misses = 0;
+    for (uint32_t k = 0; k < apple.size(); k++) {
+        uint32_t row = 0, offset = 0;
+        const bool stored = gm20b::overlapWinner(
+            order, (8 + k) * 16,
+            [](uint32_t, uint32_t) {
+                return true;
+            },
+            row, offset);
+        misses += !stored || row != uint32_t(apple[k] - '0');
+    }
+    EXPECT_EQ(misses, 0) << "of " << apple.size() << " elements two or more rows reach";
+}
+
 void aPackWithoutTheStateFailsThePass()
 {
     id<MTLDevice> d = device(false);
@@ -249,6 +356,21 @@ TEST(GM20BFacadePlainRows, PlainFormatsOverRowsThatOverlapAreHeldThroughTheirPoo
 TEST(GM20BFacadePlainRows, APassesStoresKeepTheRowAnM4MaxLandsLast)
 {
     switch_ios::test::ExpectPassesInFreshProcess(storesKeepTheRowAppleLandsLast);
+}
+
+TEST(GM20BFacadePlainRows, AWholeCopyIntoWideTexelsDrawsItsRowsFromThePool)
+{
+    switch_ios::test::ExpectPassesInFreshProcess(aWholeCopyDrawsTheRowsFromThePool);
+}
+
+TEST(GM20BFacadePlainRows, AWholeCopyIntoWideTexelsWithoutTheOverlapStateFails)
+{
+    switch_ios::test::ExpectPassesInFreshProcess(aWholeCopyWithoutTheStateFails);
+}
+
+TEST(GM20BFacadePlainRows, ACopysStoresKeepTheRowAnM4MaxLandsLast)
+{
+    switch_ios::test::ExpectPassesInFreshProcess(copiesKeepTheRowAppleLandsLast);
 }
 
 TEST(GM20BFacadePlainRows, APackWithoutTheOverlapStateFailsThePassesIntoThem)

@@ -30,6 +30,9 @@ struct ComputeFactsTest: HWTest {
         descriptor.stageInputDescriptor?.attributes[4].offset = 8
         descriptor.stageInputDescriptor?.attributes[4].bufferIndex = 0
         descriptor.stageInputDescriptor?.layouts[0].stride = 12
+        // A layout keeps MTLStepFunctionPerVertex until told: Metal stops a compute state of it (an M4 Max: "invalid
+        // stepFunction value")
+        descriptor.stageInputDescriptor?.layouts[0].stepFunction = .threadPositionInGridX
         return try gpu.device.makeComputePipelineState(descriptor: descriptor, options: [], reflection: nil)
     }
 

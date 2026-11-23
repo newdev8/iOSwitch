@@ -113,7 +113,7 @@ TEST(Bgr10XrSrgb, AStoreKeepsTheCodesALoadRead)
 }
 
 // Metal's write of a NaN stores the zero code and of a value past the codes the nearest end; its tile holds a clear as the
-// colour's nearest halves and BGR10's alpha of 1 (m2v ExtendedRange::code, clear_tile_value)
+// colour's nearest halves and BGR10's alpha of 1 (m2v ExtendedRange::code)
 TEST(Bgr10XrSrgb, ItStoresMetalsWritesAndHoldsAClearInHalves)
 {
     const float nan = std::nanf(""), inf = std::numeric_limits<float>::infinity();
@@ -209,15 +209,20 @@ TEST(Rgb10A8XrSrgb, AStoreKeepsTheTexelALoadRead)
 
 // Its target renders through an RGBA16Float stand-in: over a surface's two planes loaded from both and stored into both; of
 // a descriptor loaded from and stored into its texels of a word and a byte (an M4 Max keeps a one-level one's texels:
-// m2v-textures3 probes/keeps.mm), which a draw samples through the same conversion; its tile holds a clear in halves, alpha too
+// m2v-textures3 probes/keeps.mm); its tile holds a clear in halves, alpha too. The load is Metal's blend read of the
+// codes, which a draw's sampling conversion is not: a code past the source range samples as itself
 TEST(Rgb10A8XrSrgb, ItsTargetsStandIn)
 {
     EXPECT_EQ(gm20b::formatStandIn(gm20b::kRgb10A8XrSrgb), 115u);
     EXPECT_TRUE(gm20b::formatHoldsAlpha(gm20b::kRgb10A8XrSrgb));
     EXPECT_STREQ(gm20b::xrConversionOf(gm20b::kRgb10A8XrSrgb, true), "raw.xr.xr_two_planes_srgb_frag");
-    EXPECT_STREQ(gm20b::kPlanesSrgbStoreState, "raw.fmt.fmt_store_rgb10a8_xr_srgb_planes_frag");
-    EXPECT_STREQ(gm20b::xrConversionOf(gm20b::kRgb10A8XrSrgb, false), gm20b::formatLoadState(gm20b::kRgb10A8XrSrgb));
-    EXPECT_STREQ(gm20b::formatStoreState(gm20b::kRgb10A8XrSrgb), "raw.fmt.fmt_store_rgb10a8_xr_srgb_frag");
+    EXPECT_STREQ(gm20b::xrTargetState(gm20b::kRgb10A8XrSrgb, gm20b::XrStep::Load, 1, true),
+                 "raw.xr_target.xr_target_load_two_planes_srgb_frag");
+    EXPECT_STREQ(gm20b::xrTargetState(gm20b::kRgb10A8XrSrgb, gm20b::XrStep::Store, 1, true),
+                 "raw.xr_target.xr_target_store_two_planes_srgb_frag");
+    EXPECT_STREQ(gm20b::formatLoadState(gm20b::kRgb10A8XrSrgb), "raw.xr_target.xr_target_load_planes_srgb_frag");
+    EXPECT_STREQ(gm20b::formatStoreState(gm20b::kRgb10A8XrSrgb), "raw.xr_target.xr_target_store_planes_srgb_frag");
+    EXPECT_TRUE(gm20b::formatStoreKeeps(gm20b::kRgb10A8XrSrgb));
     EXPECT_TRUE(gm20b::formatLoadsWords(gm20b::kRgb10A8XrSrgb));
     EXPECT_EQ(gm20b::formatStoreView(gm20b::kRgb10A8XrSrgb), 103u) << "RG32Uint: the word and the alpha byte's word";
     EXPECT_EQ(gm20b::formatLoadState(gm20b::kRgb10A8XrSrgb, 4), nullptr);

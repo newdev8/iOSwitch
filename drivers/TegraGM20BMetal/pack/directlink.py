@@ -256,7 +256,7 @@ def pipeline_of(rec: dict, varying: list[int], prog_index: dict[str, int], const
     stride_twin, layer_word, viewport_word = packfile.PIPELINE_V24.unpack_from(p, V24_AT)[2:5]
     streams = streams[: streams.index(0)] if 0 in streams else streams
     tail = V20_AT - packfile.PIPELINE_V18.size - packfile.PIPELINE_V15.size
-    blend, half, _reserved = struct.unpack_from('<BBH', p, tail - 56)
+    half, _reserved = struct.unpack_from('<HH', p, tail - 56)
     storage_mask, storage_write_mask, storage_samples, storage_tests, *storage_tic = struct.unpack_from(
         '<BBBB8I', p, tail - 52
     )
@@ -301,9 +301,7 @@ def pipeline_of(rec: dict, varying: list[int], prog_index: dict[str, int], const
         'push': [(0x700 + 4 * i, words[i]) for i in range(32) if mask >> i & 1],
         'push_metadata': bool(flags & 4),
         'turn_refused': bool(flags & 64),
-        'two_plane': bool(flags & 128),
         'raster_ordered': bool(flags & 256),
-        'blend_color_word': blend,
         'half_blend_color_word': half,
         'xr_slots': xr_slots,
         'storage_mask': storage_mask,
@@ -402,9 +400,9 @@ def gather(buckets: list[str], context: dict[int, int]) -> tuple[list[dict], lis
 def probe_of(rec: dict, index: int, context: dict[int, int]) -> dict:
     """Give a made state as mkpack.py takes a probe's.
 
-    Its registers are laid over `context`, less those of the targets its draw does not write (mkpack.target_mask).
+    Its registers are laid over `context`, less those of the targets its draw does not write (mkpack.targets).
     """
-    n = mkpack.target_mask(rec['key'], bool(PIPELINE.unpack_from(rec['pipeline'])[12] & 128))
+    n = mkpack.targets(rec['key'])
     regs = dict(context)
     regs.update(rec['regs'])
     programs = stage_programs(rec)
@@ -501,7 +499,6 @@ def write_programs(path: str, programs: dict[str, dict]) -> None:
 VARIANT_FORMS = (
     ('tests=', 'of a test class'),
     ('cubic', 'of cubic samplers'),
-    ('xr2p', 'of two-plane passes'),
     ('xrs=', 'of sampled two-plane textures'),
     ('wtex=', 'of written formats'),
 )
@@ -512,9 +509,7 @@ def variant_report(states: list[dict]) -> list[str]:
     named = [packfile.variant_name(rec['key']) for rec in states]
     counts = ', '.join(f'{sum(1 for n in named if tag in n)} {what}' for tag, what in VARIANT_FORMS)
     sampled = dict.fromkeys(
-        (n, rec['key'])
-        for rec, n in zip(states, named, strict=True)
-        if 'xrs=' in n and 'tests=' not in n and 'xr2p' not in n
+        (n, rec['key']) for rec, n in zip(states, named, strict=True) if 'xrs=' in n and 'tests=' not in n
     )
     return [f'{sum(1 for n in named if n)} variant records: {counts}'] + [
         f'  sampled two-plane variant ({n.removeprefix(" | ")}): {key[:150]}' for n, key in sampled

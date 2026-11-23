@@ -354,18 +354,18 @@ GROUPS: dict[str, list[Check]] = {
             'gm20b.zbc-full-lines',
             'zcull-comp',
             'table is full (every process',
-            REPORT,
+            'repeats == 0',
             subsystem=GPU_METAL_SUBSYSTEM,
             level='error',
             regex=(
-                r"^SwitchMetal: the GPU's ZBC (?P<type>colour|depth) table is full \(every process's, never "
-                r'emptied\)'
+                r"^SwitchMetal: (?P<process>\S+)\[(?P<pid>\d+)\] the GPU's ZBC (?P<type>colour|depth) table is full "
+                r"\(every process's, never emptied\)"
             ),
-            show=('process', 'type'),
+            show=('process', 'pid', 'type'),
             source='drivers/TegraGM20BMetal/comp.cpp',
             note='one line a process and type (zbc.h firstFull); gpu.gm20b.zbc_full fills the colour table for the '
-            'rest of the boot, so each process that then asks a colour logs one; two of one type from one process '
-            '(this list counts by name: a relaunched process is another) is a repeat',
+            'rest of the boot, so each process that then asks a colour logs one; a second of one type from one '
+            'process (its pid: a relaunched process is another) is a repeat',
         ),
         Check(
             'gpu.vic-read-refused',
@@ -792,6 +792,36 @@ GROUPS: dict[str, list[Check]] = {
             process=KERNEL,
             source='drivers/NativeSwitchBlock/SwitchCryptex.cpp',
             note='silence means the page-ins failed',
+        ),
+        Check(
+            'boot.pack-covers-os',
+            'cold-boot',
+            ('a state the pack lacks made in', 'a compute state the pack lacks answered by the shader compiler'),
+            process='!SwitchHWTest',
+            subsystem=GPU_METAL_SUBSYSTEM,
+            regex=(
+                r'^SwitchMetal: a (?P<kind>compute state|state) the pack lacks (?:made|answered) '
+                r'.*?by the shader compiler'
+            ),
+            show=('process', 'kind'),
+            source='drivers/TegraGM20BMetal/TegraGM20BMetalCompleteRemote.mm (debug builds)',
+            note='an OS process waited for a compile of a state the pack lacks; `logharvest --check` on the pull names '
+            'them and `logharvest` adds them to the corpus; boot 1 (22 Nov), before its boot logo: 3 states (shadowed '
+            'variants, 30 to 61 s each; the last held the logo) and 45 compute states',
+        ),
+        Check(
+            'compiler.ui-waiter-served-below-ui',
+            'cold-boot',
+            '(UI, by the shader compiler;',
+            'count == 0',
+            subsystem=GPU_METAL_SUBSYSTEM,
+            regex=r'\(UI, by the shader compiler;.* at priority (?P<priority>\d+)',
+            where='priority < 47',
+            show=('process', 'priority'),
+            source='drivers/TegraGM20BMetal/TegraGM20BMetalCompleteRemote.mm (debug builds)',
+            note="a user-interactive thread's compile answered below its priority (47): the compiler's task holds "
+            'user-initiated at most, and only a synchronous waiter pushing the worker (a turnstile, as a sync XPC '
+            "message pushes Apple's MTLCompilerService) lifts it; boot 1: 36",
         ),
     ],
     'refusals': [

@@ -194,14 +194,6 @@ bool drawFailed(SwitchMetalCommandBuffer *cb, const gm20b::Refusal &f, const cha
                       "a storage form's view is of its attachment's texel size",
                       why, f.a, f.b, f.c);
         break;
-    case gm20b::RefXrShadow:
-        SWITCH_REFUSE(
-            "gm20b", "draw.xr_shadow",
-            "%s (attachment %u): MTLCommandBufferErrorInternal (MTLCommandBuffer.h); a draw takes a shadow "
-            "variant only in a pass that fills the colour's shadow (TegraGM20BMetalCubic.mm gm20bXrShadowDraw, "
-            "TegraGM20BMetalRangePass.mm gm20bXrShadowFill)",
-            why, f.a);
-        break;
     case gm20b::RefSamplerHeader:
         SWITCH_REFUSE(
             "gm20b", "draw.sampler_header",

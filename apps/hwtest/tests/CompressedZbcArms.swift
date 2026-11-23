@@ -6,8 +6,8 @@ import Metal
 /// gpu.gm20b.compressed_targets' ZBC arms (drivers/TegraGM20BMetal/zbc.h zbcColorEntry, zbcDepthEntry): a
 /// private one-sample target of each format (compressed memory once the facade has made some of its shape:
 /// private_comp.h, C32, C64 or C128, so a first texture asks and the arm's own comes after:
-/// CompressionSettled.remade; the rounds' 20 ms gaps give the same thread time to add the entry, which no event marks)
-/// cleared again and again
+/// CompressionSettled.remade; each round waits for the same thread to add or refuse the entry its clears asked:
+/// CompressionSettled.settle) cleared again and again
 /// to a value the boot table lacks, read back through the copy engine; for Depth16, a memoryless depth and an
 /// EQUAL-tested quad at the clear depth over a private BGRA8 target. The first round's clear writes texels (the facade
 /// asks for the entry at the third), so every later round must read back the first round's bytes: an entry's L2 texel
@@ -102,7 +102,7 @@ enum CompressedZbcArms {
                 commands.makeRenderCommandEncoder(descriptor: pass)!.endEncoding()
             }
             if round == 0 { first = try await gpu.read(target, bytesPerPixel: arm.texel.count) }
-            try await Task.sleep(nanoseconds: 20_000_000)
+            try await CompressionSettled.settle(gpu.device)
         }
         return (first, try await gpu.read(target, bytesPerPixel: arm.texel.count))
     }
@@ -142,7 +142,7 @@ enum CompressedZbcArms {
                 e.endEncoding()
             }
             if round == 0 { first = try await gpu.read(colour, bytesPerPixel: 4) }
-            try await Task.sleep(nanoseconds: 20_000_000)
+            try await CompressionSettled.settle(gpu.device)
         }
         return (first, try await gpu.read(colour, bytesPerPixel: 4))
     }

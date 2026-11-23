@@ -135,7 +135,7 @@ struct CompressedTargetsTest: HWTest {
                         encoder.endEncoding()
                     }.path
                 )
-                try await Task.sleep(nanoseconds: 20_000_000)
+                try await CompressionSettled.settle(gpu.device)
             }
             let half = c.colour == .rgba16Float
             let raster = try await gpu.raster(

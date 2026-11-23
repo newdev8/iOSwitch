@@ -2,7 +2,7 @@
 // What a record's making guarantees, checked again at its draw on gm20b::Device: a program reading a uniform buffer no
 // entry names, argument tables the record has no words of, a vertex program choosing among
 // viewports with no viewport count word, a vertex stream of no Metal buffer. assembleRecord and the bridge make no such
-// record; a record that is one anyway is refused as its own kind (gpu.h RefusalId), which fails the command buffer
+// record; a record that is one anyway is refused as its own kind (draw_refusal.h), which fails the command buffer
 // with MTLCommandBufferErrorInternal (TegraGM20BMetalDrawErrors.mm) and never reaches m2v. And the indirect draws Metal's
 // validation stops, refused as their own kinds too: arguments off 4 bytes or past their buffer, an index buffer offset off
 // its index size, commands past the indirect command buffer (the recording takes each first: enc.idxrange, gm20b:icb.range).

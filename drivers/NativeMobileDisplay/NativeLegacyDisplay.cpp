@@ -3349,13 +3349,13 @@ public:
         // r18-planes: what this swap does to each window, from the family's effective layers (a layer it does not update keeps
         // its surface). A swap that leaves window A alone (a video frame under a still UI) changes window B only: no GPU work.
         if (hwSuspended) {
-            kickDeferred = true;
+            deferHead(request, "the display is suspended (SC7)");
             return;
         }
         PlaneDecision pd;
         planeDecide(request, pd);
         if (pd.waitSlot) {
-            kickDeferred = true;
+            deferHead(request, pd.waitWhy, pd.waitCode);
             return;
         }
 #if (defined(DEVELOPMENT) && DEVELOPMENT) || (defined(DEBUG) && DEBUG)
@@ -3382,7 +3382,7 @@ public:
                 if (stats)
                     deferredAt = mach_absolute_time();
             }
-            kickDeferred = true;
+            deferHead(request, noSurface ? "every scan surface is held" : "the display is suspended (SC7)");
             return;
         }
         // r14-pacing: a newer accepted swap queued behind this one makes it stale: shown, it would hold the newer one back a frame
@@ -3530,7 +3530,7 @@ public:
             offerDirect(request, surface, memory, sourceStride, allocation, width, height, tiled, kickAt))
             return;
         if (direct && ring.target() == kNoBuffer) {  // no slot either: the frame end that frees a surface kicks again
-            kickDeferred = true;
+            deferHead(request, "no scan surface is free for the frame");
             return;
         }
         if (gpuCopy && !gpuBypass &&
@@ -3709,6 +3709,7 @@ public:
     // A swap the kick has finished with (copied, filled or handed to the GPU), before it retires: its queue time and flip wait.
     void noteTaken(const OriginalLegacySwapRequest *request, uint64_t kickAt)
     {
+        takeHeldHead(request, kickAt);
         take(request);
         scanReturnTaken(request);
         readbackTaken();
@@ -4424,6 +4425,7 @@ public:
 #include "SwitchRetireDisplay.h"
 #include "SwitchSuspendRetire.h"
 #include "SwitchTimedPresentDisplay.h"
+#include "SwitchHeldHeadDisplay.h"
 #include "SwitchConsoleReleaseDisplay.h"
 
     // A swap window A can scan in place: one full-frame BGRA surface (validateSwap's single layer), its rows a multiple of 64

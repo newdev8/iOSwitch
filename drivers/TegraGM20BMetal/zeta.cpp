@@ -207,7 +207,11 @@ void RenderEncoder::copyZetaShadow(Push &p, bool toAttachment)
     const DepthStencilAttachment &zs = pass_.depthStencil;
     cb_->use(own, !toAttachment);
     cb_->use(backing, toAttachment);
-    if (toAttachment && own.zeta && own.comptags) {
+    bool decompress = toAttachment && own.zeta && own.comptags;
+#if SWITCH_METAL_DIAGNOSTICS
+    decompress &= !zetaShadowCompressed_;
+#endif
+    if (decompress) {
         zetaTargetWords(p, &own);
         kit(p, switch_gm20b_decompress_zeta, zetaHasDepth(own.format), zetaHasStencil(own.format));
         tiledCacheDrain(p, dev_->k_.info());

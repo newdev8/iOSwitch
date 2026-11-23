@@ -212,10 +212,11 @@ void failNoImage(__unsafe_unretained SwitchMetalCommandBuffer *cb, const char *c
 
 void failNoStencilTemp(__unsafe_unretained SwitchMetalCommandBuffer *cb, const char *call)
 {
-    SWITCH_REFUSE("gm20b", "blit.stencil_memory",
-                  "%s: no memory for a texture's byte temp (Depth32Float_Stencil8's stencil, RGB10A8_2P_XR10's alpha): "
-                  "MTLCommandBufferErrorOutOfMemory",
-                  call);
+    SWITCH_REFUSE(
+        "gm20b", "blit.stencil_memory",
+        "%s: no memory for a texture's copy temp (Depth32Float_Stencil8's stencil, RGB10A8_2P_XR10's alpha, a 4x "
+        "texture's sample rows): MTLCommandBufferErrorOutOfMemory",
+        call);
     failCommandBuffer(cb, @"no memory for a copy's byte temp", MTLCommandBufferErrorOutOfMemory);
 }
 
@@ -279,14 +280,25 @@ const char *bufferCopyInvalid(SwitchMetalTexture *t, NSUInteger slice, NSUIntege
                               uint64_t offset, uint64_t row, uint64_t image, uint64_t length, int aspect,
                               bool intoTexture)
 {
-    if (t->_descriptor.sampleCount > 1)
-        return "of a multisampled texture";
+    const uint32_t samples = uint32_t(t->_descriptor.sampleCount);
+    if (samples > 1 && t->_raw.zeta)
+        return "of a multisampled depth or stencil texture";
     if (const char *side = copySideInvalid(t, slice, level, o, size))
         return side;
     MTLSize elements = size;
     if (!inElements(t, o, elements))
         return "from an origin off the format's blocks";
-    if (!bufferPlanes(offset, row, image, elements, blitUnit(t, aspect), length, intoTexture))
+    const uint32_t unit = blitUnit(t, aspect);
+    if (samples > 1) {
+        // a buffer row holds each texel's samples in order (BlitEncoder::copyBufferSamples)
+        BufferRows rows;
+        if (!bufferRows(offset, row, uint32_t(elements.height), uint32_t(elements.width * samples * unit), unit,
+                        intoTexture, rows) ||
+            !rows.uniform)
+            return "of a multisampled texture at buffer rows off its texels or shorter than its samples";
+        elements.width *= samples;
+    }
+    if (!bufferPlanes(offset, row, image, elements, unit, length, intoTexture))
         return "of buffer rows, images or an offset of part texels or past the buffer";
     return nullptr;
 }

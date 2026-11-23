@@ -140,6 +140,28 @@ size_t generateWords(const MipChain &c, uint32_t firstLevel, uint32_t lastLevel)
 void emitGenerate(Push &p, const MipChain &c, uint64_t chainVa, const Pitch *level0, uint32_t fmt2d,
                   uint32_t firstLevel, uint32_t lastLevel, Sampling sampling = kGm20bSampling);
 
+// Metal's integer pixel formats (MTLPixelFormat*Uint and *Sint)
+constexpr bool integerFormat(uint32_t mtl)
+{
+    constexpr uint32_t kFormats[] = {13, 14, 23, 24, 33, 34, 53, 54, 63, 64, 73, 74, 91, 103, 104, 113, 114, 123, 124};
+    for (const uint32_t f : kFormats)
+        if (f == mtl)
+            return true;
+    return false;
+}
+
+// The surface format a point step moves `bpp`-byte texels in with their bits as they are, 0: none: 8- and 16-bit unorm
+// carriers, which come back exactly from the engine's float conversion, and RF32_GF32_BF32_AF32 for 16 bytes, the one
+// 16-byte format the engine has (HW Test gpu.gm20b.integer_mipmaps judges its denormal and NaN words)
+uint32_t twodPointFormat(uint32_t bpp);
+
+// generateMipmaps of an integer format as an M4 Max makes it (macOS 27.2.1, validation off: every integer format, 2D,
+// arrays, cubes and volumes): texel (x, y) of each level of (firstLevel, lastLevel] the level above's texel (2x + 1,
+// 2y + 1), clamped to its last, by the 2D engine's point sampling at twice the step, every bit kept
+// (twodPointFormat); in generateWords
+void emitPointGenerate(Push &p, const MipChain &c, uint64_t chainVa, uint32_t fmt2d, uint32_t firstLevel,
+                       uint32_t lastLevel);
+
 // A 1:1 copy of [sx, sx + w) x [sy, sy + h) of a pitch surface into level `level` of the chain at (dx, dy): a copy into a level
 // (copyFromTexture/copyFromBuffer ... destinationLevel:), with the same waits as emitGenerate.
 size_t copyWords();

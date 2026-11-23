@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// See gpu.h (RenderEncoder's draws).
+// See render_encoder.h (RenderEncoder's draws).
 #include "lock.h"
 #include "icb.h"
 #include "gpu.h"
@@ -561,6 +561,7 @@ bool RenderEncoder::executeSlots(const IcbExecute &x, const char **why)
         if (p_.room() < mme::kFetchCommandsWords)
             reserve();
         mme::fetchCommands(p_, true);
+        SWITCH_METAL_DIAGNOSTIC(dev_->stats.fetch.sequential++);
     }
     for (uint32_t a = 0; a < amplifications_; a++) {
         if (amplifications_ > 1)

@@ -106,6 +106,69 @@ inline uint32_t bufferTexelBytes(uint32_t mtlPixelFormat, uint32_t bpp)
 
 constexpr uint32_t kXrStandInFormat = 115;  // RGBA16Float
 
+// Apple's extended-range formats, each a colour attachment format: RGB10A8_2P_XR10 (550), BGRA10_XR (552), BGR10_XR (554)
+// and their sRGB twins
+constexpr bool xrTarget(uint32_t format)
+{
+    return format >= 550 && format <= 555;
+}
+
+// An extended-range attachment's pass through its RGBA16Float stand-in, Metal's tile (format_standin.h, measured on an M4
+// Max by xr-float's probe): Metal's tile holds a pass in halves and stores codes once; every blend read clamps the
+// destination as the source (colour codes past 1022 read as 1022, BGRA10_XR's alpha codes to 384..894); a pass rewrites
+// every texel of the 32x32 tiles its fragments reach and keeps the rest. pack/xr_target.metal's load state fills the
+// stand-in with the blend read of each code and its store state writes Metal's write code back; GM20B keeps no record of
+// which tiles a pass's fragments reached, so a loaded pass's store keeps each texel whose stand-in still holds the load's
+// value of its codes
+enum class XrStep : uint8_t {
+    Load,
+    Store,
+    Resolve
+};
+
+// The pack's state of `step` for an attachment of `format` at `samples` samples; `planes`: held in a surface's two planes
+// (Texture::xrPlanes). Null where the pack has none: the two-plane formats take no sample count above 1 (Metal's rule)
+constexpr const char *xrTargetState(uint32_t format, XrStep step, uint32_t samples = 1, bool planes = false)
+{
+    const char *const oneSample[][3] = {
+        // load, store and resolve of BGR10_XR, BGRA10_XR, RGB10A8_2P_XR10 of a descriptor and over two planes; their sRGB
+        // twins'
+        {"raw.xr_target.xr_target_load_bgr10_frag", "raw.xr_target.xr_target_store_bgr10_frag",
+         "raw.xr_target.xr_target_resolve_bgr10_frag"},
+        {"raw.xr_target.xr_target_load_bgra10_frag", "raw.xr_target.xr_target_store_bgra10_frag",
+         "raw.xr_target.xr_target_resolve_bgra10_frag"},
+        {"raw.xr_target.xr_target_load_planes_frag", "raw.xr_target.xr_target_store_planes_frag", nullptr},
+        {"raw.xr_target.xr_target_load_two_planes_frag", "raw.xr_target.xr_target_store_two_planes_frag", nullptr},
+        {"raw.xr_target.xr_target_load_bgr10_srgb_frag", "raw.xr_target.xr_target_store_bgr10_srgb_frag",
+         "raw.xr_target.xr_target_resolve_bgr10_srgb_frag"},
+        {"raw.xr_target.xr_target_load_bgra10_srgb_frag", "raw.xr_target.xr_target_store_bgra10_srgb_frag",
+         "raw.xr_target.xr_target_resolve_bgra10_srgb_frag"},
+        {"raw.xr_target.xr_target_load_planes_srgb_frag", "raw.xr_target.xr_target_store_planes_srgb_frag", nullptr},
+        {"raw.xr_target.xr_target_load_two_planes_srgb_frag", "raw.xr_target.xr_target_store_two_planes_srgb_frag",
+         nullptr},
+    };
+    const char *const perSample[][2][2] = {
+        // load and store at 2 and at 4 samples, of BGR10_XR, BGRA10_XR and their sRGB twins
+        {{"raw.xr_target.xr_target_load_bgr10_ms2_frag", "raw.xr_target.xr_target_store_bgr10_ms2_frag"},
+         {"raw.xr_target.xr_target_load_bgr10_ms4_frag", "raw.xr_target.xr_target_store_bgr10_ms4_frag"}},
+        {{"raw.xr_target.xr_target_load_bgra10_ms2_frag", "raw.xr_target.xr_target_store_bgra10_ms2_frag"},
+         {"raw.xr_target.xr_target_load_bgra10_ms4_frag", "raw.xr_target.xr_target_store_bgra10_ms4_frag"}},
+        {{"raw.xr_target.xr_target_load_bgr10_srgb_ms2_frag", "raw.xr_target.xr_target_store_bgr10_srgb_ms2_frag"},
+         {"raw.xr_target.xr_target_load_bgr10_srgb_ms4_frag", "raw.xr_target.xr_target_store_bgr10_srgb_ms4_frag"}},
+        {{"raw.xr_target.xr_target_load_bgra10_srgb_ms2_frag", "raw.xr_target.xr_target_store_bgra10_srgb_ms2_frag"},
+         {"raw.xr_target.xr_target_load_bgra10_srgb_ms4_frag", "raw.xr_target.xr_target_store_bgra10_srgb_ms4_frag"}},
+    };
+    if (!xrTarget(format))
+        return nullptr;
+    const bool srgb = format & 1;
+    const uint32_t form = format <= 551 ? (planes ? 3 : 2) : format <= 553 ? 1 : 0;
+    if (samples <= 1)
+        return oneSample[form + (srgb ? 4 : 0)][uint32_t(step)];
+    if (form > 1 || step == XrStep::Resolve || (samples != 2 && samples != 4))
+        return nullptr;
+    return perSample[form + (srgb ? 2 : 0)][samples == 4][uint32_t(step)];
+}
+
 // An RGB10A8_2P_XR10 or RGB10A8_2P_XR10_sRGB texel buffer as an M4 Max lays one in its buffer (m2v-textures3
 // probes/xrbuf.mm): each texel's colour word in order, then each alpha byte in order from the words' bytes rounded up to
 // 16 KiB. Its own header reads the words (R32Uint); a draw or kernel samples its stand-in.

@@ -281,6 +281,15 @@ bool Device::outgrow(Ring &r, uint32_t bytes, uint64_t &at)
     return true;
 }
 
+uint64_t Device::pushVa(const uint32_t *word) const
+{
+    const auto *at = reinterpret_cast<const uint8_t *>(word);
+    for (const Bo &b : push_.outgrown)
+        if (at >= b.cpu && at < b.cpu + b.bytes)
+            return b.va + uint64_t(at - b.cpu);
+    return push_.bo.va + uint64_t(at - push_.bo.cpu);
+}
+
 void Device::retire(Ring &r, uint32_t seqno)
 {
     for (const Bo &b : r.outgrown)

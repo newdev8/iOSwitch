@@ -174,6 +174,29 @@ TEST(GM20BGlassMem, HeaderChangedUnderTheSameIndexIsMoved)
     EXPECT_EQ(probe.close(42, 4200, 0).items[0].moved, false);  // a view's header made again
 }
 
+// A move onto compressed memory gives the texture a new key at once and its header's new bytes only when the move's
+// job lands, after later draws sampled it: no change in between is moved, and once the job completed one is again
+TEST(GM20BGlassMem, AHeaderAMovesJobRewritesIsNotMoved)
+{
+    gm20b::GlassMem probe;
+    const char *glass = "PBGRABsovXmw_TgsgA3Xhf_Isrc";
+    const auto sample = [&](uint64_t key, uint64_t header, uint64_t serial) {
+        probe.wrote(key, serial, 0);
+        probe.sampled(item(key, 384, 128, kBgra8, 4), glass, 7, header, serial);
+        joined(probe.finish(probe.close(serial, serial * 100, 0), rows(serial, {kGrey}).data(), false));
+    };
+    sample(kPyramid, 0xaaaa, 40);
+    probe.rewriting(7, true);
+    sample(kCapture, 0xaaaa, 41);
+    sample(kCapture, 0xbbbb, 42);
+    EXPECT_EQ(probe.counts.moved.load(), 0u);
+    probe.rewriting(7, false);
+    sample(kCapture, 0xbbbb, 43);
+    EXPECT_EQ(probe.counts.moved.load(), 0u);
+    sample(kCapture, 0xcccc, 44);
+    EXPECT_EQ(probe.counts.moved.load(), 1u);
+}
+
 // A destroyed texture's history goes: memory reused by a new texture starts unwritten
 TEST(GM20BGlassMem, ForgetDropsTheTexturesHistory)
 {

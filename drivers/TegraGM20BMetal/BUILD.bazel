@@ -313,6 +313,8 @@ ios_binary(
         "blit_probe.cpp",
         "blit_texels.cpp",
         "command_buffer.cpp",
+        "device_channel.cpp",
+        "device_stamps.cpp",
         "draw.cpp",
         "draw_prepare.cpp",
         "draw_probes.cpp",

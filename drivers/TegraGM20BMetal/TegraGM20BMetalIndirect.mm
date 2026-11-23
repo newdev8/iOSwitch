@@ -364,7 +364,6 @@ uint8_t kindsOf(const SwitchMetalICBCommand &c)
          offset:(NSUInteger)offset
 {
     SWITCH_API(ApiDraw);
-    gm20bXrShadowBlock(_cb);
     SwitchMetalIndirectCommandBuffer *b = [(id)buffer isKindOfClass:[SwitchMetalIndirectCommandBuffer class]]
                                               ? (SwitchMetalIndirectCommandBuffer *)buffer
                                               : nil;

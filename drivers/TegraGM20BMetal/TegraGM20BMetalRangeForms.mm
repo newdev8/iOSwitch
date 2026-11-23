@@ -77,7 +77,8 @@ void SwitchMetalRangeEncode::planesBack()
 // A turned one's stand-in, laid out as its plane, is filled and stored straight and drawn turned (TurnedPass)
 // A pass that draws nothing (in no sub-encoder that continues it either) and neither clears nor resolves one keeps its
 // codes: an M4 Max keeps a BGRA10_XR_sRGB alpha code past 894 there, which the tiles its draws touch clamp (m2v-textures4
-// probes/xr553.mm, more.mm corner)
+// probes/xr553.mm, more.mm corner). One that draws nothing and clears a BGR10_XR or BGRA10_XR one renders no stand-in:
+// the clear registers write its codes (xr.h xrClearTexel), Metal's straight route on memory it compresses
 bool SwitchMetalRangeEncode::formatStandIns(const SwitchMetalPass &pass, gm20b::PassDesc &p, const PlanDraws &draws,
                                             bool continued)
 {
@@ -85,8 +86,11 @@ bool SwitchMetalRangeEncode::formatStandIns(const SwitchMetalPass &pass, gm20b::
     for (const auto &[t, j] : formatTargets_) {
         const gm20b::ColorAttachment bound = p.color[j];
         const SwitchMetalPass::Color &a = pass.color[j];
-        const bool kept =
-            !continued && a.load != MTLLoadActionClear && !a.resolve && !(drawn ? *drawn : *(drawn = draws.any()));
+        const bool drawless = !continued && !a.resolve && !(drawn ? *drawn : *(drawn = draws.any()));
+        const uint32_t format = t->_raw.format;
+        if (drawless && a.load == MTLLoadActionClear && (format == 552 || format == 554))
+            continue;
+        const bool kept = drawless && a.load != MTLLoadActionClear;
         const bool fill = !kept && !t->_raw.memoryless && a.load != MTLLoadActionClear;
         gm20b::Texture *standIn = gm20b::formatStandInFor(*d_, *rc_, bound, p.layers, j, fill, why_);
         if (!standIn) {
@@ -107,7 +111,7 @@ bool SwitchMetalRangeEncode::formatStandIns(const SwitchMetalPass &pass, gm20b::
             gm20b::metalCompresses(uint64_t(made.usage), made.allowGPUOptimizedContents, t->_raw.width, t->_raw.height);
         gm20b::formatStandInClear(t->_raw.format, p.color[j].clear, p.color[j].clear, compressed);
         if (p.color[j].store && !t->_raw.memoryless && !kept)
-            formatStores_.push_back({bound, p.layers, standIn});
+            formatStores_.push_back({bound, p.layers, standIn, fill});
     }
     formatTargets_.clear();
     return true;
@@ -121,7 +125,7 @@ bool SwitchMetalRangeEncode::storeFormatTargets()
         if (!passDrew_ && s.attachment.load == gm20b::ColorAttachment::Load && t && t->xrPlanes &&
             gm20b::xrPlanesOverlap(*t))
             continue;
-        if (!gm20b::storeFormatStandIn(*d_, *rc_, s.attachment, s.layers, *s.standIn, !passDrew_, why_)) {
+        if (!gm20b::storeFormatStandIn(*d_, *rc_, s.attachment, s.layers, *s.standIn, !passDrew_, why_, s.filled)) {
             gm20bPassWorkFails(cb_, ahead_, *why_, MTLCommandBufferErrorInternal);
             return fail(PredPassAttFormat, *why_, s.attachment.texture->format);
         }
@@ -274,48 +278,6 @@ bool SwitchMetalRangeEncode::imagePlanes(size_t pass, gm20b::PassDesc &p)
     }
     p.morePlanes = morePlanes_.data();
     p.morePlaneCount = uint32_t(morePlanes_.size());
-    return true;
-}
-
-// Every RGB10A8_2P_XR10 of a pass where one cannot take its two planes (TegraGM20BMetalEncoder.mm xrPlanesPassOf) is drawn in
-// one image: one held in its planes through an image merged from them before the pass, split back into them after it
-// (writtenBack), as a fragment program's stores into one are
-bool SwitchMetalRangeEncode::xrImages(const SwitchMetalPass &pass, gm20b::PassDesc &p)
-{
-    const gm20b::Texture *colors[8] = {};
-    for (unsigned j = 0; j < 8; j++)
-        if (__unsafe_unretained SwitchMetalTexture *t = (SwitchMetalTexture *)pass.color[j].texture)
-            colors[j] = &t->_raw;
-    bool planes = false;
-    if (!gm20b::xrPlanesPass(colors, planes))
-        return true;
-    for (unsigned j = 0; j < 8; j++) {
-        __unsafe_unretained SwitchMetalTexture *t = (SwitchMetalTexture *)pass.color[j].texture;
-        if (!t || !t->_raw.xrPlanes || t->_raw.memoryless || gm20b::xrForm(t->_raw.format) != gm20b::XrForm::Planes)
-            continue;
-        const auto imaged = std::find_if(planesImaged_.begin(), planesImaged_.end(), [&](const auto &w) {
-            return w.first == t;
-        });
-        gm20b::Texture *image = imaged != planesImaged_.end() ? imaged->second : nullptr;
-        if (!image) {
-            const uint32_t k = uint32_t(planesImaged_.size());
-            if (const int failed = mergeXrPlanes(rc_, t->_raw, k, image, why_)) {
-                if (failed == 2) {
-                    gm20bOwnDrawFails(cb_, ahead_, *why_, rc_->refusal);
-                    return refused();
-                }
-                gm20bPassWorkFails(cb_, ahead_, *why_, MTLCommandBufferErrorOutOfMemory);
-                return fail(PredEncPassRender, *why_, k);
-            }
-            planesImaged_.push_back({t, image});
-        }
-        // the target in the attachment's format, as its draws' states name it (an over-planes texture is whole: no part
-        // takes this slot)
-        levelTargets_[j] = *image;
-        levelTargets_[j].format = t->_raw.format;
-        levelTargets_[j].rotation = t->_raw.rotation;  // laid out as the planes: a turned one's drawn turned
-        p.color[j].texture = &levelTargets_[j];
-    }
     return true;
 }
 

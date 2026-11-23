@@ -144,6 +144,14 @@ rust_test(
 )
 
 rust_test(
+    name = "half_blend_test",
+    args = ["lower::arith::extended_range::blend::"],
+    compile_data = glob(["tests/**"]),
+    crate = ":metal2vulkan",
+    deps = ["//third_party/m2v/crates/metal2vulkan-devtools"],
+)
+
+rust_test(
     name = "packed_storage_test",
     args = ["lower::fragment::fetch::packed::"],
     compile_data = glob(["tests/**"]),
@@ -244,14 +252,15 @@ rust_test(
     deps = ["//third_party/m2v/crates/metal2vulkan-devtools"],
 )
 
-# RGB10A8_2P_XR10 in its two planes (pipeline/two_plane.rs): the output split, the input attachments and storage views
-# of a fetch, the alpha index
+# A Depth16Unorm attachment's in-shader depth test (lower/fragment/depth_test.rs): the stand-in holds its codes as
+# floats, the variant tests and writes the code Metal stores, and neither form links into the other's pipeline
 rust_test(
-    name = "two_plane_test",
-    args = ["tests::engine_extended_range::two_plane::"],
+    name = "depth16_shader_tests_test",
+    args = ["tests::engine_depth16_shader_tests::"],
     compile_data = glob(["tests/**"]),
     crate = ":metal2vulkan",
     data = [
+        "//third_party/m2v:translation_test_inputs",
         "@gpu_llvm_as//:bin/llvm-as",
         "@spirv_tools//:spirv-dis",
         "@spirv_tools//:spirv-val",
@@ -261,6 +270,20 @@ rust_test(
         "METAL2VULKAN_SPIRV_DIS": "$(rootpath @spirv_tools//:spirv-dis)",
         "METAL2VULKAN_SPIRV_VAL": "$(rootpath @spirv_tools//:spirv-val)",
     },
+    deps = ["//third_party/m2v/crates/metal2vulkan-devtools"],
+)
+
+# A fragment output to an extended-range attachment's RGBA16Float stand-in carries Metal's clamp
+rust_test(
+    name = "stand_in_colors_test",
+    args = ["tests::engine_stand_in_colors::"],
+    compile_data = glob(["tests/**"]),
+    crate = ":metal2vulkan",
+    data = [
+        "//third_party/m2v:translation_test_inputs",
+        "@gpu_llvm_as//:bin/llvm-as",
+    ],
+    env = {"METAL2VULKAN_LLVM_AS": "$(rootpath @gpu_llvm_as//:bin/llvm-as)"},
     deps = ["//third_party/m2v/crates/metal2vulkan-devtools"],
 )
 
@@ -324,4 +347,5 @@ rust_test(
 ) for name, test_filter in [
     ("binary_linking_test", "tests::engine_linking::binary_functions_link_under_their_specialized_names_and_compute_exact_outputs"),
     ("group_linking_test", "tests::engine_linking::groups::"),
+    ("signed_linking_test", "tests::engine_linking::signed::"),
 ]]

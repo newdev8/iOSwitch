@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// A draw's fixed-function vertex streams (gpu.h RenderEncoder): stream 0 at the record's vertexSlot, the streams past it
+// A draw's fixed-function vertex streams (render_encoder.h): stream 0 at the record's vertexSlot, the streams past it
 // at its vertexStreams, each bound as NVK_MME_BIND_VB binds one.
 #include <algorithm>
 #include "../../kits/SwitchGM20B/SwitchGM20B.h"

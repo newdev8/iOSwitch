@@ -30,7 +30,6 @@ TEST(GM20BKey, InternalLookupsFindCanonicalOwnStates)
              {"xr_vert  | f xr_bgra10_frag", "raw.xr.xr_bgra10_frag"},
              {"xr_vert  | f xr_planes_merge_frag", "raw.xr.xr_planes_merge_frag"},
              {"xr_vert  | f xr_planes_split_frag", "raw.xr.xr_planes_split_frag"},
-             {"xr_vert  | f xr_tile_bgra10_frag", "raw.xr.xr_tile_bgra10_frag"},
              {"two_plane_cover  | f two_plane_load", "raw.two_plane.two_plane_load"},
              {"resolve_vert  | f resolve_bgra8_frag", "raw.resolve.resolve_bgra8_frag"}}) {
         const std::string key = std::string("samples=1 topo=0 ds=0/0 c0=80:15:0:1:0:0:1:0:0  | v ") + pair;
@@ -108,7 +107,7 @@ TEST(GM20BKey, EveryResolveStateIsAnOwnState)
                                     ":15:0:1:0:0:1:0:0  | v resolve_vert  | f " + fragment;
             EXPECT_EQ(gm20b::packKeyHash(key), hash(name)) << format << " x" << samples;
         }
-    EXPECT_EQ(names.size(), 24u);
+    EXPECT_EQ(names.size(), 23u);
 }
 
 TEST(GM20BKey, FrameworkResolveSpecializationsHaveDistinctKeys)

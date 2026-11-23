@@ -6,6 +6,7 @@
 #import "TegraGM20BMetalRotated.h"
 #import "TegraGM20BMetalSurfaceRefusals.h"
 #import "TegraGM20BMetalXrPlanes.h"
+#include "native_plane.h"
 #include "surface_note.h"
 #include "surface_refusal.h"
 #include "texture_shape.h"
@@ -306,8 +307,7 @@ const char *ycbcrPlan(MTLTextureDescriptor *d, IOSurfaceRef s, NSUInteger plane,
             IOSurfaceGetID(s), base, IOSurfaceGetAllocSize(s), s, offset & ~15ull, uint32_t(d.width),
             uint32_t(d.height), uint32_t(gpuRows(pitch, d)), uint32_t(d.pixelFormat), t->_raw, false);
         keepCpuRows(t, static_cast<uint8_t *>(base) + offset, pitch);
-        const OSType fourcc = IOSurfaceGetPixelFormat(s);
-        if (t->_gm20bOk && (fourcc == 0x34323076 || fourcc == 0x34323066))
+        if (t->_gm20bOk && gm20b::nativePictureFormat(IOSurfaceGetPixelFormat(s)))
             t->_raw.nativePlane = uint32_t(plane);
         if (t->_gm20bOk && !keepExtendedRange(d, t->_raw, false)) {
             gm20b::surfaceRefusal = "no memory or texture header for the stand-in it is sampled through";

@@ -9,7 +9,7 @@ use crate::descriptors::{
     DescriptorFunction, NmbComputePipelineDescriptorOf, NmbConstant, NmbRenderPipelineDescriptorOf, attribute_out,
     compute_descriptor, e, get, guard, release, specialization,
 };
-use crate::direct::SWITCH_METAL_HEAP_ELEMENTS;
+use crate::direct_abi::SWITCH_METAL_HEAP_ELEMENTS;
 use metal2vulkan::device::{
     Device, DeviceDescription, DevicePolicy, FramebufferFetchPolicy, NativeShaderTarget, VkExtension, VkFeature,
 };

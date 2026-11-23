@@ -77,4 +77,43 @@ TEST_F(DeviceSegments, ACommandBufferWithinItsJobsPushBudgetBindsEveryStateBySeg
     EXPECT_GE(dev.stats.segmentBinds - binds, uint64_t(kBinds));
 }
 
+// A pass of more push words than the ring holds, as gpu.path.lock_between_jobs' 36,000 draws: the ring is replaced by a
+// larger one mid-pass (Device::outgrow), and every push the pass's jobs name lies where its words were written, those of
+// the rings it grew out of included (the device: PBENTRY, the PBDMA fetching words that were no pushes at the ring's
+// addresses its pass end had worked out against the ring that replaced it)
+TEST_F(DeviceSegments, APassThatOutgrowsThePushRingNamesEachPushWhereItWasWritten)
+{
+    gm20b::Pipeline *a = state(0xc1, 0x100);
+    ASSERT_NE(a, nullptr);
+    fold();
+    const size_t jobs = kernel_model::model.jobs.size();
+    const uint64_t outgrown = dev.stats.ringsOutgrown.load();
+    gm20b::CommandBuffer *cb = dev.begin();
+    ASSERT_NE(cb, nullptr);
+    gm20b::PassDesc pass;
+    pass.color[0].texture = &target;
+    pass.count = 1;
+    gm20b::RenderEncoder *e = cb->render(pass);
+    ASSERT_NE(e, nullptr);
+    e->setPipeline(a);
+    for (int i = 0; i < 40000; ++i) {
+        const char *why = nullptr;
+        ASSERT_TRUE(e->draw(kTriangle, 0, 3, 1, 0, &why)) << (why ? why : "?");
+    }
+    e->end();
+    uint32_t seqno = 0;
+    ASSERT_TRUE(cb->commit(seqno));
+    ASSERT_GT(dev.stats.ringsOutgrown.load(), outgrown) << "the pass outgrew the ring";
+    size_t pushes = 0, unbound = 0;
+    for (size_t j = jobs; j < kernel_model::model.jobs.size(); ++j)
+        for (const TegraGM20BAbiPush &p : kernel_model::model.jobs[j].pushes) {
+            const uint8_t *first = kernel_model::model.host(p.va),
+                          *last = kernel_model::model.host(p.va + uint64_t(p.dwords) * 4 - 1);
+            unbound += !first || last != first + uint64_t(p.dwords) * 4 - 1;
+            pushes++;
+        }
+    EXPECT_GT(pushes, 0u);
+    EXPECT_EQ(unbound, 0u) << "of " << pushes << " pushes lie in no memory bound whole";
+}
+
 }  // namespace

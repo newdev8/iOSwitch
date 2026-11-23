@@ -217,10 +217,9 @@ class LogHarvestTest(unittest.TestCase):
         self.assertEqual(caspec.corpus_fields(line), caspec.corpus_fields(line.replace(' os=24B119', '')))
 
     def test_a_sampled_two_plane_variant_and_its_state_are_harvested_once(self):
-        # TegraGM20BMetalCubic.mm renderVariant's name: a test class and the two-plane pass the pack builder makes of
-        # each line
+        # TegraGM20BMetalCubic.mm renderVariant's name: a test class the pack builder makes of each line
         state = CA.replace('c0=80:', 'c0=550:')
-        key = state + ' | tests=2 | xr2p | xrs=2'
+        key = state + ' | tests=2 | xrs=2'
         records = [
             record(BOOT, 'x', 'OS version: 24B119'),
             made(BOOT, 'backboardd', '000000000000000a', key),
@@ -241,7 +240,7 @@ class LogHarvestTest(unittest.TestCase):
     def test_a_packed_states_sampled_and_written_variant_is_harvested_alone(self):
         records = [
             record(BOOT, 'x', 'OS version: 24B119'),
-            made(BOOT, 'iconservicesagent', '000000000000000b', IMAGE + CUBIC + ' | xr2p | xrs=4 | wtex=1:23'),
+            made(BOOT, 'iconservicesagent', '000000000000000b', IMAGE + CUBIC + ' | xrs=4 | wtex=1:23'),
         ]
         added, _ = self.run_tool(records)
         keys = [logharvest.make_pack.state_key(line) for line in added]
@@ -249,9 +248,39 @@ class LogHarvestTest(unittest.TestCase):
         self.assertEqual(added[0].count(f' lib={RB}'), 2)
 
     def test_a_variants_state_is_its_key_before_the_variant_name(self):
-        self.assertEqual(logharvest.base_key(IMAGE + CUBIC + ' | tests=2 | xr2p | xrs=2 | wtex=1:23'), IMAGE)
+        self.assertEqual(logharvest.base_key(IMAGE + CUBIC + ' | tests=2 | xrs=2 | wtex=1:23'), IMAGE)
+        self.assertEqual(logharvest.untested(IMAGE + CUBIC + ' | tests=2 | xrs=2'), IMAGE + CUBIC + ' | xrs=2')
+
+    def test_an_earlier_drivers_two_plane_pass_is_read_without_it(self):
+        # the pack's variant names no longer hold " | xr2p": without the cut its key's state would end in it
+        self.assertEqual(logharvest.base_key(IMAGE + CUBIC + ' | tests=2 | xr2p | xrs=2'), IMAGE)
         self.assertEqual(logharvest.untested(IMAGE + CUBIC + ' | tests=2 | xr2p | xrs=2'), IMAGE + CUBIC + ' | xrs=2')
         self.assertEqual(logharvest.untested(IMAGE + ' | xr2p'), IMAGE)
+
+    def test_an_earlier_drivers_shadowed_variant_is_harvested_as_its_state(self):
+        # boot 1's iconservicesagent asked RenderBox's states as " | xrsh=1" variants, which a device draws as the
+        # states themselves now
+        records = [
+            record(BOOT, 'x', 'OS version: 24B119'),
+            made(BOOT, 'iconservicesagent', '000000000000000c', COLOR + CUBIC + ' | tests=2 | xrsh=1'),
+        ]
+        added, _ = self.run_tool(records)
+        self.assertEqual([logharvest.make_pack.state_key(line) for line in added], [COLOR, COLOR + CUBIC])
+        self.assertEqual(logharvest.base_key(IMAGE + CUBIC + ' | tests=2 | xrsh=1 | xrs=2'), IMAGE)
+
+    def test_check_fails_while_an_os_state_is_not_the_corpuss_and_leaves_it_as_it_was(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            corpus = Path(scratch) / 'corpus.log'
+            corpus.write_text(CORPUS)
+            ndjson = Path(scratch) / 'boot.ndjson'
+            # but the key the log cut, which no line can hold and --check counts
+            whole = [r for r in boot_records() if ' 0000000000000006 ' not in r['eventMessage']]
+            ndjson.write_text(''.join(json.dumps(r) + '\n' for r in whole))
+            check = ['--ndjson', str(ndjson), '--corpus', str(corpus), '--check']
+            self.assertEqual(logharvest.main(check), 1)
+            self.assertEqual(corpus.read_text(), CORPUS)
+            logharvest.main(['--ndjson', str(ndjson), '--corpus', str(corpus)])
+            self.assertEqual(logharvest.main(check), 0)
 
     def test_a_framework_only_the_crawl_names_takes_the_crawls_path(self):
         tungsten = f'{HEAD} | v tungsten_vertex  | f tungsten_fragment  | l Tungsten'

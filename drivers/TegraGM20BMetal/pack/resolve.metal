@@ -96,7 +96,8 @@ static float4 srgb8(Samples s, uint n, uint2 at)
 static float4 counted(float4 x)
 {
     const uint4 bits = as_type<uint4>(x), m = bits & 0x7fffffffu;
-    return as_type<float4>(select(select(bits, (bits & 0x80000000u) | 0x47800000u, m == 0x7f800000u), uint4(0), m > 0x7f800000u));
+    return as_type<float4>(
+        select(select(bits, (bits & 0x80000000u) | 0x47800000u, m == 0x7f800000u), uint4(0), m > 0x7f800000u));
 }
 
 static float halfGrid(float x)
@@ -170,33 +171,28 @@ static float4 float32Mean(Samples s, uint n, uint2 at)
 
 // Bit a x 32 + b: two 5-bit codes a and b of an odd sum resolve to the code above the floor of their mean; bit a x 64 + b
 // of kUp6 the same for 6-bit codes
-constant uint kUp5[32] = {
-    0xaa00a088u, 0x00000000u, 0x00000000u, 0x55005041u,
-    0x00000000u, 0x00000000u, 0xaa00a088u, 0x55005041u,
-    0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u,
-    0xaa00a088u, 0x55005041u, 0xaa00a088u, 0x55005041u,
-    0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u,
-    0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u,
-    0xaa00a088u, 0x55005041u, 0xaa00a088u, 0x55005041u,
-    0xaa00a088u, 0x55005041u, 0xaa00a088u, 0x55005041u};
+constant uint kUp5[32] = {0xaa00a088u, 0x00000000u, 0x00000000u, 0x55005041u, 0x00000000u, 0x00000000u, 0xaa00a088u,
+                          0x55005041u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0xaa00a088u, 0x55005041u,
+                          0xaa00a088u, 0x55005041u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u,
+                          0x00000000u, 0x00000000u, 0x00000000u, 0xaa00a088u, 0x55005041u, 0xaa00a088u, 0x55005041u,
+                          0xaa00a088u, 0x55005041u, 0xaa00a088u, 0x55005041u};
 
 constant uint kUp6[128] = {
-    0x00000000u, 0xaaaaaaaau, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u,
-    0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u,
-    0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u,
-    0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u,
-    0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u,
-    0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u,
-    0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u,
-    0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u,
-    0x00000000u, 0x00000000u, 0x00000001u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000001u, 0x00000000u,
-    0x00000000u, 0x00000000u, 0x00000001u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000001u, 0x00000000u,
-    0x00000000u, 0x00000000u, 0x00000001u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000001u, 0x00000000u,
-    0x00000000u, 0x00000000u, 0x00000001u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000001u, 0x00000000u,
-    0x00000000u, 0x00000000u, 0x00000001u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000001u, 0x00000000u,
-    0x00000000u, 0x00000000u, 0x00000001u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000001u, 0x00000000u,
-    0x00000000u, 0x00000000u, 0x00000001u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000001u, 0x00000000u,
-    0x00000000u, 0x00000000u, 0x00000001u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000001u, 0x00000000u};
+    0x00000000u, 0xaaaaaaaau, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u,
+    0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u,
+    0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u,
+    0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u,
+    0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u,
+    0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u,
+    0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u,
+    0x00000000u, 0x00000000u, 0x00000000u, 0x00000001u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000001u, 0x00000000u,
+    0x00000000u, 0x00000000u, 0x00000001u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000001u, 0x00000000u, 0x00000000u,
+    0x00000000u, 0x00000001u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000001u, 0x00000000u, 0x00000000u, 0x00000000u,
+    0x00000001u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000001u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000001u,
+    0x00000000u, 0x00000000u, 0x00000000u, 0x00000001u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000001u, 0x00000000u,
+    0x00000000u, 0x00000000u, 0x00000001u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000001u, 0x00000000u, 0x00000000u,
+    0x00000000u, 0x00000001u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000001u, 0x00000000u, 0x00000000u, 0x00000000u,
+    0x00000001u, 0x00000000u};
 
 static uint packed2(uint a, uint b, uint bits, constant uint *up)
 {
@@ -223,10 +219,11 @@ static float4 packedOf(Samples s, uint n, uint2 at, uint4 bits)
     return float4(out) / max;
 }
 
-#define UNORM_RESOLVE(name, r, g, b, a)                                                                                    \
-    fragment float4 resolve_##name##_frag(Out in [[stage_in]], Samples s [[texture(0)]], constant uint &n [[buffer(0)]]) \
-    {                                                                                                                      \
-        return unormOf(s, n, uint2(in.position.xy), float4(r, g, b, a));                                                   \
+#define UNORM_RESOLVE(name, r, g, b, a)                                                  \
+    fragment float4 resolve_##name##_frag(Out in [[stage_in]], Samples s [[texture(0)]], \
+                                          constant uint &n [[buffer(0)]])                \
+    {                                                                                    \
+        return unormOf(s, n, uint2(in.position.xy), float4(r, g, b, a));                 \
     }
 
 UNORM_RESOLVE(a8, 255.0, 255.0, 255.0, 255.0)
@@ -271,19 +268,6 @@ fragment float4 resolve_b5g6r5_frag(Out in [[stage_in]], Samples s [[texture(0)]
 fragment float4 resolve_bgr5a1_frag(Out in [[stage_in]], Samples s [[texture(0)]], constant uint &n [[buffer(0)]])
 {
     return packedOf(s, n, uint2(in.position.xy), uint4(5, 5, 5, 1));
-}
-
-// BGRA10_XR over its codes (blue, green, red and alpha fields, each code in its field's top 10 bits, the attachment's own
-// RGBA16Uint header): an M4 Max's colour code is the samples' codes' mean rounded half up, every channel; its alpha the
-// mean with a tie down, 88% of texels at 2x and 98% at 4x, the rest one code off (harness/resolvecodesoracle.mm)
-fragment uint4 resolve_bgra10_xr_frag(Out in [[stage_in]], texture2d_ms<uint, access::read> s [[texture(0)]],
-                                      constant uint &n [[buffer(0)]])
-{
-    const uint2 at = uint2(in.position.xy);
-    uint4 sum = 0;
-    for (uint k = 0; k < n; k++)
-        sum += s.read(at, k) >> 6;
-    return uint4((sum.xyz * 2 + n) / (2 * n), (sum.w * 2 + n - 1) / (2 * n)) << 6;
 }
 
 fragment float4 resolve_rgba8_frag(Out in [[stage_in]], Samples s [[texture(0)]], constant uint &n [[buffer(0)]])
@@ -350,11 +334,11 @@ static Depth depthOf(DepthSamples s, uint n, uint2 at, uint filter)
     return {d};
 }
 
-#define DEPTH_RESOLVE(format, filter, index)                                                                               \
-    fragment Depth resolve_##format##_##filter##_frag(Out in [[stage_in]], DepthSamples s [[texture(0)]],                \
-                                                      constant uint &n [[buffer(0)]])                                     \
-    {                                                                                                                      \
-        return depthOf(s, n, uint2(in.position.xy), index);                                                               \
+#define DEPTH_RESOLVE(format, filter, index)                                                              \
+    fragment Depth resolve_##format##_##filter##_frag(Out in [[stage_in]], DepthSamples s [[texture(0)]], \
+                                                      constant uint &n [[buffer(0)]])                     \
+    {                                                                                                     \
+        return depthOf(s, n, uint2(in.position.xy), index);                                               \
     }
 
 DEPTH_RESOLVE(depth16, sample0, 0)

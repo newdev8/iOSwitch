@@ -3,17 +3,16 @@ import HWTestCore
 import HWTestGPU
 import Metal
 
-/// Destination-reading draws with no storage form, which the driver draws as one call of its fetch macro (mme.h):
-/// the GPU loops over the draw's primitives and instances, one BEGIN each behind the fetch barrier, the strip's
-/// assembly kept between them (RenderEncoder::fetchDraw). Each scene (FetchShapes.swift) draws into a BGR5A1Unorm target
-/// cleared to 0, which no storage image views, so its fetch is the texture unit's behind that barrier; its fragment adds
-/// one red code to the colour it read, so a pixel's red counts the fragments that reached it in order. Each test proves
-/// one field of the macro's draw: the primitive count, a long list, strip restart and split-mode parity, points and
-/// lines, primitive_id, instance_id, the absolute vertex_id, the indirect forms, and the draws of an indirect command
-/// buffer. Fields: wrong= pixels whose codes are not the scene's (first= the first, x,y:red/green/blue against the
-/// scene's), path=, sequential= and triangles= the facade's fetch_sequential and fetch_triangles counters over the draws
-/// (1 a draw; the draws' primitives times instances, 0 for an indirect draw; reported, not judged, for an indirect
-/// command buffer's), failed_cbs= (0).
+/// Destination-reading draws, each scene (FetchShapes.swift) drawn into each FetchTarget cleared to 0; its fragment adds
+/// one red code to the colour it read, so a pixel's red counts the fragments that reached it in order. On B5G6R5Unorm,
+/// whose fetching states have no storage form, each call is one call of the driver's fetch macro (mme.h,
+/// RenderEncoder::fetchDraw): the GPU loops over the draw's primitives and instances, one BEGIN each behind the fetch
+/// barrier, the strip's assembly kept between them. On BGR5A1Unorm each call is drawn whole inside the pixel interlock.
+/// Each test proves one shape on both routes: the primitive count, a long list, strip restart and split-mode parity,
+/// points and lines, primitive_id, instance_id, the absolute vertex_id, the indirect forms, and the draws of an indirect
+/// command buffer; and that each call was one call's words on the CPU (FetchRoute). Fields per target (_b5g6r5,
+/// _bgr5a1): wrong= pixels whose codes are not the scene's (first= the first, scene:x,y:red/green/blue against the
+/// scene's), interlocked=, sequential= and triangles= the facade's fetch counters over its scenes; path=; failed_cbs=.
 struct FetchShapeTest: HWTest {
     let id: String
     let name: String
@@ -69,43 +68,51 @@ struct FetchShapeTest: HWTest {
         guard kind == "gm20b" else { return .skip("the default device is not the facade (\(kind))") }
         var metrics = Metrics()
         var checks: [(String, Bool)] = []
-        let before = GM20BFacade.counters(of: gpu.device)
-        var wrong = 0
-        var first = "-"
-        for (index, shape) in shapes.enumerated() {
-            let target = try gpu.texture(.bgr5A1Unorm, shape.side, shape.side, usage: [.renderTarget])
-            let state = try gpu.render(vertex: shape.vertex, fragment: shape.fragment, format: .bgr5A1Unorm) {
-                $0.supportIndirectCommandBuffers = shape.icb
+        let start = GM20BFacade.counters(of: gpu.device)
+        let calls = shapes.map { $0.icb ? 1 : $0.draws.count }.reduce(0, +)
+        let triangles = shapes.filter { !$0.icb }.flatMap(\.draws).map(\.counted).reduce(0, +)
+        for target in FetchTarget.all {
+            let before = GM20BFacade.counters(of: gpu.device)
+            var wrong = 0
+            var first = "-"
+            do {
+                for (index, shape) in shapes.enumerated() {
+                    let texture = try gpu.texture(target.format, shape.side, shape.side, usage: [.renderTarget])
+                    let state = try gpu.render(vertex: shape.vertex, fragment: shape.fragment, format: target.format) {
+                        $0.supportIndirectCommandBuffers = shape.icb
+                    }
+                    let path = try await gpu.run(tolerateError: true) {
+                        try Self.encode(shape, state, into: texture, gpu, $0)
+                    }.path
+                    checks.append(("\(target.name) scene \(index): its command buffer on the driver", path == "gm20b"))
+                    let got = target.codes(try await gpu.read(texture, bytesPerPixel: 2))
+                    let off = zip(got, target.expected(shape.codes)).enumerated()
+                        .filter { $0.element.0 != $0.element.1 }
+                    wrong += off.count
+                    if let o = off.first, first == "-" {
+                        let (x, y) = (o.offset % shape.side, o.offset / shape.side)
+                        first = "\(index):\(x),\(y):\(Self.shown(o.element.0))_want_\(Self.shown(o.element.1))"
+                    }
+                }
+            } catch {
+                checks.append(("\(target.name): \(GPU.describe(error))", false))
+                continue
             }
-            let path = try await gpu.run(tolerateError: true) { try Self.encode(shape, state, into: target, gpu, $0) }
-                .path
-            checks.append(("scene \(index): its command buffer on the driver", path == "gm20b"))
-            let got = Self.codes(try await gpu.read(target, bytesPerPixel: 2))
-            let off = zip(got, shape.codes).enumerated().filter { $0.element.0 != $0.element.1 }
-            wrong += off.count
-            if let o = off.first, first == "-" {
-                let (x, y) = (o.offset % shape.side, o.offset / shape.side)
-                first = "\(index):\(x),\(y):\(Self.shown(o.element.0))_want_\(Self.shown(o.element.1))"
+            let after = GM20BFacade.counters(of: gpu.device)
+            var moved: [String: Int] = [:]
+            for key in FetchRoute.keys {
+                moved[key] = (after[key] ?? 0) - (before[key] ?? 0)
+                metrics.set("\(key.dropFirst("fetch_".count))_\(target.name)", moved[key] ?? 0)
             }
+            metrics.set("wrong_\(target.name)", wrong)
+            metrics.set("first_\(target.name)", first)
+            checks.append(("\(target.name): every pixel at the scene's codes", wrong == 0))
+            checks += target.route.checks(calls: calls, triangles: triangles, moved: moved)
         }
-        let after = GM20BFacade.counters(of: gpu.device)
-        let moved = { (key: String) in (after[key] ?? 0) - (before[key] ?? 0) }
-        let draws = shapes.filter { !$0.icb }.flatMap(\.draws)
-        let counted = draws.map(\.counted).reduce(0, +)
-        metrics.set("wrong", wrong)
-        metrics.set("first", first)
+        let end = GM20BFacade.counters(of: gpu.device)
         metrics.set("path", gpu.paths.isEmpty ? "-" : gpu.paths.text)
-        metrics.set("sequential", moved("fetch_sequential"))
-        metrics.set("triangles", moved("fetch_triangles"))
-        metrics.merge(PathTally.counterMetrics(before: before, after: after))
-        checks.append(("every pixel at the scene's codes", wrong == 0))
-        if !draws.isEmpty {
-            checks.append(
-                ("fetch_sequential rose by \(draws.count), one a draw", moved("fetch_sequential") == draws.count)
-            )
-            checks.append(("fetch_triangles rose by \(counted)", moved("fetch_triangles") == counted))
-        }
-        checks.append(FailedCounts.judged(before: before, after: after, own: gpu.paths, &metrics))
+        metrics.merge(PathTally.counterMetrics(before: start, after: end))
+        checks.append(FailedCounts.judged(before: start, after: end, own: gpu.paths, &metrics))
         return .judged(checks, metrics, proof: gpu.proof)
     }
 
@@ -191,14 +198,6 @@ struct FetchShapeTest: HWTest {
             }
         }
         encoder.executeCommandsInBuffer(icb, range: 0 ..< shape.draws.count)
-    }
-
-    /// BGR5A1Unorm's texels as (red, green, blue) codes: blue in bits 0-4, green 5-9, red 10-14 (fill_texel.h)
-    static func codes(_ bytes: [UInt8]) -> [SIMD3<UInt8>] {
-        stride(from: 0, to: bytes.count - 1, by: 2).map { at in
-            let word = UInt16(bytes[at]) | UInt16(bytes[at + 1]) << 8
-            return SIMD3(UInt8(word >> 10 & 31), UInt8(word >> 5 & 31), UInt8(word & 31))
-        }
     }
 
     static func shown(_ c: SIMD3<UInt8>) -> String { "\(c.x)/\(c.y)/\(c.z)" }

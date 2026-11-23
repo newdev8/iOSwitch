@@ -255,11 +255,17 @@ void gm20bAlphaOneBlend(MTLRenderPipelineColorAttachmentDescriptor *a)
         MTLBlendFactor(gm20b::alphaOneFactor(uint32_t(a.destinationAlphaBlendFactor), false));
 }
 
+// An extended-range attachment's state is the descriptor's own: the translator lowers it onto the attachment's
+// RGBA16Float stand-in with Metal's clamp of its output (translate/NativeMetalDescriptors.rs)
+static bool remadeForStandIn(uint32_t format)
+{
+    return gm20b::ycbcrRenderedFormat(format) || (gm20b::formatStandIn(format) && !gm20b::xrTarget(format));
+}
+
 uint32_t standInTargetFormat(MTLRenderPipelineDescriptor *d)
 {
     for (NSUInteger c = 0; c < 8; c++)
-        if (const uint32_t format = uint32_t(d.colorAttachments[c].pixelFormat);
-            gm20b::ycbcrRenderedFormat(format) || gm20b::formatStandIn(format))
+        if (const uint32_t format = uint32_t(d.colorAttachments[c].pixelFormat); remadeForStandIn(format))
             return format;
     return 0;
 }
@@ -287,7 +293,7 @@ uint32_t standInTargetFormat(MTLRenderPipelineDescriptor *d)
     for (NSUInteger c = 0; c < 8; c++) {
         MTLRenderPipelineColorAttachmentDescriptor *a = d.colorAttachments[c];
         const uint32_t format = uint32_t(a.pixelFormat);
-        if (const uint32_t standIn = gm20b::formatStandIn(format)) {
+        if (const uint32_t standIn = gm20b::xrTarget(format) ? 0 : gm20b::formatStandIn(format)) {
             made.colorAttachments[c].pixelFormat = MTLPixelFormat(standIn);
             if (!gm20b::formatHoldsAlpha(format))
                 gm20bAlphaOneBlend(made.colorAttachments[c]);

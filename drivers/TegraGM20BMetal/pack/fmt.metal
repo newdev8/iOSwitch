@@ -3,10 +3,9 @@
 // RGBA32Float stand-in. The load states fill the stand-in with the texture's texels as floats (RGB9E5Float's decoded from
 // its words); each store state writes the stand-in's texels into the texture's words, as an M4 Max stores a drawn texel:
 // A1BGR5Unorm and ABGR4Unorm each channel's nearest half, a tie to even, clamped to [0, 1] (a NaN 0), then its nearest code;
-// RGB9E5Float each channel clamped to [0, 65408] (a NaN 0), the largest's exponent shared, every mantissa truncated;
-// BGR10_XR_sRGB and BGRA10_XR_sRGB (RGBA16Float stand-ins, filled by pack/xr.metal xr_bgr10_srgb_frag and
-// xr_bgra10_srgb_frag) each colour through Metal's sRGB encode table. A clear goes into the stand-in as floats these give
-// back (formatStandInClear).
+// RGB9E5Float each channel clamped to [0, 65408] (a NaN 0), the largest's exponent shared, every mantissa truncated. A
+// clear goes into the stand-in as floats these give back (formatStandInClear). The extended-range formats' are
+// pack/xr_target.metal's.
 #include <metal_stdlib>
 using namespace metal;
 
@@ -103,112 +102,40 @@ constant ushort kSrgbFirst[640] = {
 #include "xr_srgb_encode.h"
 };
 
-// Metal's write code of a BGR10_XR_sRGB colour value (runtime/xr_srgb.h bgr10XrSrgbCode): a NaN 0, |v| below
-// 2 to the nearest 2^-13 (ties even; exact in a float), the largest offset whose first index is at most that, toward the
-// sign of v, at most 384 below code 384
-static uint xrSrgbCode(float v)
-{
-    if (isnan(v))
-        v = 0.0f;
-    const uint i = uint(rint(min(fabs(v), 2.0f) * 8192.0f));
-    uint n = 0;
-    for (uint step = 512; step; step >>= 1)
-        if (n + step < 640 && kSrgbFirst[n + step] <= i)
-            n += step;
-    return v < 0.0f ? 384 - min(n, 384u) : 384 + n;
-}
-
-// BGR10_XR_sRGB's stand-in (halves, its tile's) into its words, bits 30 and 31 set as Metal's write sets them
-static uint bgr10XrSrgbWord(float4 v)
-{
-    return 0xC0000000u | xrSrgbCode(v.r) << 20 | xrSrgbCode(v.g) << 10 | xrSrgbCode(v.b);
-}
-
-// BGRA10_XR_sRGB's stand-in into its fields, blue first, each code in its field's top 10 bits (runtime/xr_srgb.h
-// bgra10XrSrgbFields): the colour through Metal's sRGB encode, alpha as BGRA10_XR's write stores it, a NaN 0, clamped to
-// [0, 1], 384 + its nearest step of 1/510 (ties even; a half times 510 is exact in a float)
-static uint4 bgra10XrSrgbFields(float4 v)
-{
-    const float a = isnan(v.a) ? 0.0f : clamp(v.a, 0.0f, 1.0f);
-    return uint4(xrSrgbCode(v.b), xrSrgbCode(v.g), xrSrgbCode(v.r), 384u + uint(rint(a * 510.0f))) << 6;
-}
-
-fragment uint fmt_store_bgr10_xr_srgb_frag(Out in [[stage_in]], texture2d<float, access::read> s [[texture(0)]])
-{
-    return bgr10XrSrgbWord(texel(in, s));
-}
-
-fragment uint4 fmt_store_bgra10_xr_srgb_frag(Out in [[stage_in]], texture2d<float, access::read> s [[texture(0)]])
-{
-    return bgra10XrSrgbFields(texel(in, s));
-}
-
-// RGB10A8_2P_XR10_sRGB's stand-in into a surface's word plane and alpha plane (runtime/xr_srgb.h rgb10a8XrSrgbTexel):
-// the colour word through Metal's sRGB encode, bits 30 and 31 clear, and the alpha byte, a NaN 0, clamped to [0, 1], its
-// nearest step of 1/255 (ties even)
-struct WordAndAlpha {
-    uint word [[color(0)]];
-    uint alpha [[color(1)]];
-};
-
-fragment WordAndAlpha fmt_store_rgb10a8_xr_srgb_planes_frag(Out in [[stage_in]],
-                                                            texture2d<float, access::read> s [[texture(0)]])
-{
-    const float4 v = texel(in, s);
-    const float a = isnan(v.a) ? 0.0f : clamp(v.a, 0.0f, 1.0f);
-    return {xrSrgbCode(v.r) << 20 | xrSrgbCode(v.g) << 10 | xrSrgbCode(v.b), uint(rint(a * 255.0f))};
-}
-
-// The same into a descriptor's texels, the word and the alpha byte side by side (viewed as RG32Uint)
-fragment uint2 fmt_store_rgb10a8_xr_srgb_frag(Out in [[stage_in]], texture2d<float, access::read> s [[texture(0)]])
-{
-    const float4 v = texel(in, s);
-    const float a = isnan(v.a) ? 0.0f : clamp(v.a, 0.0f, 1.0f);
-    return uint2(xrSrgbCode(v.r) << 20 | xrSrgbCode(v.g) << 10 | xrSrgbCode(v.b), uint(rint(a * 255.0f)));
-}
-
 // A multisampled target's stand-in (runtime/format_standin.h bySamples): each sample filled from and stored into
 // that sample of the texture, the fragment run once a sample; a function a sample count, as the pack keys an own state
 // by its function's name
 typedef texture2d_ms<float, access::read> Samples;
 
-#define FMT_PER_SAMPLE(count)                                                                                              \
-    fragment float4 fmt_load_ms##count##_frag(Out in [[stage_in]], uint k [[sample_id]], Samples t [[texture(0)]])     \
-    {                                                                                                                      \
-        return t.read(uint2(in.position.xy), k);                                                                           \
-    }                                                                                                                      \
-    fragment float4 fmt_load_rgb9e5_ms##count##_frag(Out in [[stage_in]], uint k [[sample_id]],                          \
-                                                     texture2d_ms<uint, access::read> t [[texture(0)]])                  \
-    {                                                                                                                      \
-        return float4(rgb9e5Floats(t.read(uint2(in.position.xy), k).r), 1.0f);                                            \
-    }                                                                                                                      \
-    fragment uint fmt_store_abgr4_ms##count##_frag(Out in [[stage_in]], uint k [[sample_id]], Samples s [[texture(0)]]) \
-    {                                                                                                                      \
-        return abgr4Word(s.read(uint2(in.position.xy), k));                                                                \
-    }                                                                                                                      \
-    fragment uint fmt_store_bgra4_ms##count##_frag(Out in [[stage_in]], uint k [[sample_id]], Samples s [[texture(0)]]) \
-    {                                                                                                                      \
-        return bgra4Word(s.read(uint2(in.position.xy), k));                                                                \
-    }                                                                                                                      \
-    fragment uint fmt_store_a1bgr5_ms##count##_frag(Out in [[stage_in]], uint k [[sample_id]],                           \
-                                                    Samples s [[texture(0)]])                                              \
-    {                                                                                                                      \
-        return a1bgr5Word(s.read(uint2(in.position.xy), k));                                                               \
-    }                                                                                                                      \
-    fragment uint fmt_store_rgb9e5_ms##count##_frag(Out in [[stage_in]], uint k [[sample_id]],                           \
-                                                    Samples s [[texture(0)]])                                              \
-    {                                                                                                                      \
-        return rgb9e5Encode(s.read(uint2(in.position.xy), k).rgb, false);                                                    \
-    }                                                                                                                      \
-    fragment uint fmt_store_bgr10_xr_srgb_ms##count##_frag(Out in [[stage_in]], uint k [[sample_id]],                    \
-                                                           Samples s [[texture(0)]])                                       \
-    {                                                                                                                      \
-        return bgr10XrSrgbWord(s.read(uint2(in.position.xy), k));                                                          \
-    }                                                                                                                      \
-    fragment uint4 fmt_store_bgra10_xr_srgb_ms##count##_frag(Out in [[stage_in]], uint k [[sample_id]],                  \
-                                                             Samples s [[texture(0)]])                                     \
-    {                                                                                                                      \
-        return bgra10XrSrgbFields(s.read(uint2(in.position.xy), k));                                                      \
+#define FMT_PER_SAMPLE(count)                                                                                      \
+    fragment float4 fmt_load_ms##count##_frag(Out in [[stage_in]], uint k [[sample_id]], Samples t [[texture(0)]]) \
+    {                                                                                                              \
+        return t.read(uint2(in.position.xy), k);                                                                   \
+    }                                                                                                              \
+    fragment float4 fmt_load_rgb9e5_ms##count##_frag(Out in [[stage_in]], uint k [[sample_id]],                    \
+                                                     texture2d_ms<uint, access::read> t [[texture(0)]])            \
+    {                                                                                                              \
+        return float4(rgb9e5Floats(t.read(uint2(in.position.xy), k).r), 1.0f);                                     \
+    }                                                                                                              \
+    fragment uint fmt_store_abgr4_ms##count##_frag(Out in [[stage_in]], uint k [[sample_id]],                      \
+                                                   Samples s [[texture(0)]])                                       \
+    {                                                                                                              \
+        return abgr4Word(s.read(uint2(in.position.xy), k));                                                        \
+    }                                                                                                              \
+    fragment uint fmt_store_bgra4_ms##count##_frag(Out in [[stage_in]], uint k [[sample_id]],                      \
+                                                   Samples s [[texture(0)]])                                       \
+    {                                                                                                              \
+        return bgra4Word(s.read(uint2(in.position.xy), k));                                                        \
+    }                                                                                                              \
+    fragment uint fmt_store_a1bgr5_ms##count##_frag(Out in [[stage_in]], uint k [[sample_id]],                     \
+                                                    Samples s [[texture(0)]])                                      \
+    {                                                                                                              \
+        return a1bgr5Word(s.read(uint2(in.position.xy), k));                                                       \
+    }                                                                                                              \
+    fragment uint fmt_store_rgb9e5_ms##count##_frag(Out in [[stage_in]], uint k [[sample_id]],                     \
+                                                    Samples s [[texture(0)]])                                      \
+    {                                                                                                              \
+        return rgb9e5Encode(s.read(uint2(in.position.xy), k).rgb, false);                                          \
     }
 
 FMT_PER_SAMPLE(2)
@@ -258,42 +185,37 @@ constant uint kGridTies31[1] = {
     0x5555ff00u,
 };
 constant ushort kSrgb8Steps[256] = {
-    0, 1, 2, 4, 5, 6, 7, 9, 10, 11, 12, 14, 15, 16, 18, 20,
-    21, 23, 25, 27, 29, 31, 33, 35, 37, 40, 42, 45, 48, 50, 53, 56,
-    59, 62, 66, 69, 72, 76, 79, 83, 87, 91, 95, 99, 103, 107, 112, 116,
-    121, 126, 131, 136, 141, 146, 151, 156, 162, 168, 173, 179, 185, 191, 197, 204,
-    210, 216, 223, 230, 237, 244, 251, 258, 265, 273, 280, 288, 296, 304, 312, 320,
-    329, 337, 346, 354, 363, 372, 381, 390, 400, 409, 419, 428, 438, 448, 458, 469,
-    479, 490, 500, 511, 522, 533, 544, 555, 567, 578, 590, 602, 614, 626, 639, 651,
-    664, 676, 689, 702, 715, 728, 742, 755, 769, 783, 797, 811, 825, 840, 854, 869,
-    884, 899, 914, 929, 945, 960, 976, 992, 1008, 1024, 1041, 1057, 1074, 1091, 1108, 1125,
-    1142, 1159, 1177, 1195, 1213, 1231, 1249, 1267, 1286, 1304, 1323, 1342, 1361, 1381, 1400, 1420,
-    1440, 1459, 1480, 1500, 1520, 1541, 1562, 1582, 1603, 1625, 1646, 1668, 1689, 1711, 1733, 1755,
-    1778, 1800, 1823, 1846, 1869, 1892, 1916, 1939, 1963, 1987, 2011, 2035, 2059, 2084, 2109, 2133,
-    2159, 2184, 2209, 2235, 2260, 2286, 2312, 2339, 2365, 2392, 2419, 2446, 2473, 2500, 2527, 2555,
-    2583, 2611, 2639, 2668, 2696, 2725, 2754, 2783, 2812, 2841, 2871, 2901, 2931, 2961, 2991, 3022,
-    3052, 3083, 3114, 3146, 3177, 3209, 3240, 3272, 3304, 3337, 3369, 3402, 3435, 3468, 3501, 3535,
-    3568, 3602, 3636, 3670, 3705, 3739, 3774, 3809, 3844, 3879, 3915, 3950, 3986, 4022, 4059, 4095,
+    0,    1,    2,    4,    5,    6,    7,    9,    10,   11,   12,   14,   15,   16,   18,   20,   21,   23,   25,
+    27,   29,   31,   33,   35,   37,   40,   42,   45,   48,   50,   53,   56,   59,   62,   66,   69,   72,   76,
+    79,   83,   87,   91,   95,   99,   103,  107,  112,  116,  121,  126,  131,  136,  141,  146,  151,  156,  162,
+    168,  173,  179,  185,  191,  197,  204,  210,  216,  223,  230,  237,  244,  251,  258,  265,  273,  280,  288,
+    296,  304,  312,  320,  329,  337,  346,  354,  363,  372,  381,  390,  400,  409,  419,  428,  438,  448,  458,
+    469,  479,  490,  500,  511,  522,  533,  544,  555,  567,  578,  590,  602,  614,  626,  639,  651,  664,  676,
+    689,  702,  715,  728,  742,  755,  769,  783,  797,  811,  825,  840,  854,  869,  884,  899,  914,  929,  945,
+    960,  976,  992,  1008, 1024, 1041, 1057, 1074, 1091, 1108, 1125, 1142, 1159, 1177, 1195, 1213, 1231, 1249, 1267,
+    1286, 1304, 1323, 1342, 1361, 1381, 1400, 1420, 1440, 1459, 1480, 1500, 1520, 1541, 1562, 1582, 1603, 1625, 1646,
+    1668, 1689, 1711, 1733, 1755, 1778, 1800, 1823, 1846, 1869, 1892, 1916, 1939, 1963, 1987, 2011, 2035, 2059, 2084,
+    2109, 2133, 2159, 2184, 2209, 2235, 2260, 2286, 2312, 2339, 2365, 2392, 2419, 2446, 2473, 2500, 2527, 2555, 2583,
+    2611, 2639, 2668, 2696, 2725, 2754, 2783, 2812, 2841, 2871, 2901, 2931, 2961, 2991, 3022, 3052, 3083, 3114, 3146,
+    3177, 3209, 3240, 3272, 3304, 3337, 3369, 3402, 3435, 3468, 3501, 3535, 3568, 3602, 3636, 3670, 3705, 3739, 3774,
+    3809, 3844, 3879, 3915, 3950, 3986, 4022, 4059, 4095,
 };
 constant ushort kSrgb8First[256] = {
-    0, 1, 2, 4, 5, 6, 7, 9, 10, 11, 12, 14, 15, 16, 18, 19,
-    21, 23, 24, 26, 28, 30, 32, 34, 37, 39, 42, 44, 47, 49, 52, 55,
-    58, 61, 64, 68, 71, 74, 78, 82, 85, 89, 93, 97, 102, 106, 110, 115,
-    119, 124, 129, 134, 139, 144, 149, 154, 160, 165, 171, 177, 183, 189, 195, 201,
-    207, 214, 220, 227, 234, 241, 248, 255, 262, 270, 277, 285, 293, 300, 308, 317,
-    325, 333, 342, 350, 359, 368, 377, 386, 395, 405, 414, 424, 434, 444, 454, 464,
-    474, 485, 495, 506, 517, 528, 539, 550, 562, 573, 585, 597, 609, 621, 633, 645,
-    658, 670, 683, 696, 709, 722, 736, 749, 763, 777, 790, 804, 819, 833, 848, 862,
-    877, 892, 907, 922, 938, 953, 969, 985, 1001, 1017, 1033, 1049, 1066, 1083, 1100, 1117,
-    1134, 1151, 1169, 1186, 1204, 1222, 1240, 1259, 1277, 1296, 1314, 1333, 1352, 1371, 1391, 1410,
-    1430, 1450, 1470, 1490, 1510, 1531, 1552, 1572, 1593, 1615, 1636, 1657, 1679, 1701, 1723, 1745,
-    1767, 1790, 1812, 1835, 1858, 1881, 1904, 1928, 1951, 1975, 1999, 2023, 2048, 2072, 2097, 2121,
-    2146, 2172, 2197, 2222, 2248, 2274, 2300, 2326, 2352, 2379, 2406, 2433, 2460, 2487, 2514, 2542,
-    2569, 2597, 2626, 2654, 2682, 2711, 2740, 2769, 2798, 2827, 2857, 2886, 2916, 2946, 2977, 3007,
-    3038, 3068, 3099, 3130, 3162, 3193, 3225, 3257, 3289, 3321, 3354, 3386, 3419, 3452, 3485, 3518,
-    3552, 3586, 3620, 3654, 3688, 3722, 3757, 3792, 3827, 3862, 3897, 3933, 3969, 4005, 4041, 4077,
+    0,    1,    2,    4,    5,    6,    7,    9,    10,   11,   12,   14,   15,   16,   18,   19,   21,   23,   24,
+    26,   28,   30,   32,   34,   37,   39,   42,   44,   47,   49,   52,   55,   58,   61,   64,   68,   71,   74,
+    78,   82,   85,   89,   93,   97,   102,  106,  110,  115,  119,  124,  129,  134,  139,  144,  149,  154,  160,
+    165,  171,  177,  183,  189,  195,  201,  207,  214,  220,  227,  234,  241,  248,  255,  262,  270,  277,  285,
+    293,  300,  308,  317,  325,  333,  342,  350,  359,  368,  377,  386,  395,  405,  414,  424,  434,  444,  454,
+    464,  474,  485,  495,  506,  517,  528,  539,  550,  562,  573,  585,  597,  609,  621,  633,  645,  658,  670,
+    683,  696,  709,  722,  736,  749,  763,  777,  790,  804,  819,  833,  848,  862,  877,  892,  907,  922,  938,
+    953,  969,  985,  1001, 1017, 1033, 1049, 1066, 1083, 1100, 1117, 1134, 1151, 1169, 1186, 1204, 1222, 1240, 1259,
+    1277, 1296, 1314, 1333, 1352, 1371, 1391, 1410, 1430, 1450, 1470, 1490, 1510, 1531, 1552, 1572, 1593, 1615, 1636,
+    1657, 1679, 1701, 1723, 1745, 1767, 1790, 1812, 1835, 1858, 1881, 1904, 1928, 1951, 1975, 1999, 2023, 2048, 2072,
+    2097, 2121, 2146, 2172, 2197, 2222, 2248, 2274, 2300, 2326, 2352, 2379, 2406, 2433, 2460, 2487, 2514, 2542, 2569,
+    2597, 2626, 2654, 2682, 2711, 2740, 2769, 2798, 2827, 2857, 2886, 2916, 2946, 2977, 3007, 3038, 3068, 3099, 3130,
+    3162, 3193, 3225, 3257, 3289, 3321, 3354, 3386, 3419, 3452, 3485, 3518, 3552, 3586, 3620, 3654, 3688, 3722, 3757,
+    3792, 3827, 3862, 3897, 3933, 3969, 4005, 4041, 4077,
 };
-
 
 struct VolumeStep {
     uint2 above, size;
@@ -586,19 +508,19 @@ static uint4 packRgb9e5(thread const uint4 *w, thread const uint *n, uint taps)
     return uint4(rgb9e5Word(h), 0, 0, 0);
 }
 
-#define WORD_MIP(name, pack, out, take)                                                                                \
-    fragment out fmt_mip_##name##_frag(Out in [[stage_in]], texture2d<uint, access::read> above [[texture(0)]],       \
-                                       constant Step &step [[buffer(0)]])                                             \
-    {                                                                                                                 \
-        const uint2 p = uint2(in.position.xy);                                                                        \
-        const Axis ax = axisTap(p.x, step.above.x, step.size.x), ay = axisTap(p.y, step.above.y, step.size.y);        \
-        uint4 w[4];                                                                                                   \
-        uint n[4];                                                                                                    \
-        for (uint k = 0; k < 4; k++) {                                                                                \
-            w[k] = above.read(uint2(k & 1 ? ax.x1 : ax.x0, k & 2 ? ay.x1 : ay.x0));                                   \
-            n[k] = (k & 1 ? ax.q : 256 - ax.q) * (k & 2 ? ay.q : 256 - ay.q) * 256;                                   \
-        }                                                                                                             \
-        return pack(w, n, 4) take;                                                                                    \
+#define WORD_MIP(name, pack, out, take)                                                                         \
+    fragment out fmt_mip_##name##_frag(Out in [[stage_in]], texture2d<uint, access::read> above [[texture(0)]], \
+                                       constant Step &step [[buffer(0)]])                                       \
+    {                                                                                                           \
+        const uint2 p = uint2(in.position.xy);                                                                  \
+        const Axis ax = axisTap(p.x, step.above.x, step.size.x), ay = axisTap(p.y, step.above.y, step.size.y);  \
+        uint4 w[4];                                                                                             \
+        uint n[4];                                                                                              \
+        for (uint k = 0; k < 4; k++) {                                                                          \
+            w[k] = above.read(uint2(k & 1 ? ax.x1 : ax.x0, k & 2 ? ay.x1 : ay.x0));                             \
+            n[k] = (k & 1 ? ax.q : 256 - ax.q) * (k & 2 ? ay.q : 256 - ay.q) * 256;                             \
+        }                                                                                                       \
+        return pack(w, n, 4) take;                                                                              \
     }
 
 // An M4's trilinear weights (of 2^-24, on 2^-16): each product of an x and a z weight exact, its share on y's second row
@@ -614,19 +536,19 @@ static void volumeWeights(Axis ax, Axis ay, Axis az, thread uint *n)
     }
 }
 
-#define WORD_MIP3D(name, pack, out, take)                                                                              \
-    fragment out fmt_mip_3d_##name##_frag(Out in [[stage_in]], texture3d<uint, access::read> above [[texture(0)]],    \
-                                          constant VolumeStep &step [[buffer(0)]])                                    \
-    {                                                                                                                 \
-        const uint2 p = uint2(in.position.xy);                                                                        \
-        const Axis ax = axisTap(p.x, step.above.x, step.size.x), ay = axisTap(p.y, step.above.y, step.size.y),        \
-                   az = axisTap(step.plane, step.aboveDepth, step.depth);                                             \
-        uint4 w[8];                                                                                                   \
-        uint n[8];                                                                                                    \
-        for (uint k = 0; k < 8; k++)                                                                                  \
-            w[k] = above.read(uint3(k & 1 ? ax.x1 : ax.x0, k & 2 ? ay.x1 : ay.x0, k & 4 ? az.x1 : az.x0));            \
-        volumeWeights(ax, ay, az, n);                                                                                 \
-        return pack(w, n, 8) take;                                                                                    \
+#define WORD_MIP3D(name, pack, out, take)                                                                          \
+    fragment out fmt_mip_3d_##name##_frag(Out in [[stage_in]], texture3d<uint, access::read> above [[texture(0)]], \
+                                          constant VolumeStep &step [[buffer(0)]])                                 \
+    {                                                                                                              \
+        const uint2 p = uint2(in.position.xy);                                                                     \
+        const Axis ax = axisTap(p.x, step.above.x, step.size.x), ay = axisTap(p.y, step.above.y, step.size.y),     \
+                   az = axisTap(step.plane, step.aboveDepth, step.depth);                                          \
+        uint4 w[8];                                                                                                \
+        uint n[8];                                                                                                 \
+        for (uint k = 0; k < 8; k++)                                                                               \
+            w[k] = above.read(uint3(k & 1 ? ax.x1 : ax.x0, k & 2 ? ay.x1 : ay.x0, k & 4 ? az.x1 : az.x0));         \
+        volumeWeights(ax, ay, az, n);                                                                              \
+        return pack(w, n, 8) take;                                                                                 \
     }
 
 WORD_MIP(bgr10_xr, packBgr10, uint, .x)

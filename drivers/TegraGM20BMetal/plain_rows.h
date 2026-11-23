@@ -5,8 +5,9 @@
 // lands rows at that pitch (rows under 16 bytes 16 apart: Texture::storePitch), a CPU copy at the plane's own rows, last
 // row last. Reads go through the pool image the copy engine gathers the rows into (Texture::sampled); a pass renders that
 // pool, then the pack's overlap state draws the rows from it, each byte from the row whose store lands last in an M4 Max's
-// pass (overlap_order.h); a kernel's pool and a blit go back in row order (an M4 Max's kernel stores and its blits of
-// 1 to 8 bytes a texel race: three runs of one shape differ).
+// pass (overlap_order.h); a whole copy into texels of 8 or 16 bytes goes into the pool and the overlap state draws its rows
+// in an M4 Max's copy order (copyOrder); a kernel's pool and any other blit go back in row order (an M4 Max's kernel
+// stores race: three runs of one shape differ).
 #pragma once
 #include <cstdint>
 
@@ -74,6 +75,33 @@ inline int storePlainRows(Device &d, CommandBuffer &rc, const Texture &t, const 
     }
     const OverlapRows order = plainRowsOrder(t, rows);
     return storeOverlapRows(rc, state, format, rows.va, rows, *t.storeView, nullptr, order, order.tiles, loaded, why);
+}
+
+// The rows from the pool after a whole copy into a texture of 8- or 16-byte texels put its texels there, as an M4 Max's
+// copies store them (overlap_order.h copyOrder); as storePlainRows answers
+inline int storeCopiedPlainRows(Device &d, CommandBuffer &rc, const Texture &t, const char **why)
+{
+    Texture scratch;
+    const Texture &rows = storedRows(t, t, scratch);
+    const uint32_t format = t.storeView->format;
+    Pipeline *state = d.ownPipeline(overlapState(format));
+    if (!state) {
+        *why = "the pack has no overlap state storing a plain texture whose rows overlap";
+        return 1;
+    }
+    OverlapRows order = plainRowsOrder(t, rows);
+    order.copied = 1;
+    return storeOverlapRows(rc, state, format, rows.va, rows, *t.storeView, nullptr, order, order.tiles, nullptr, why);
+}
+
+// Whether a copy of `w` x `h` texels at (x, y) into `t` stores its rows through the pool by copyOrder: the whole of a
+// pooled texture of 8- or 16-byte texels whose stored rows overlap (smaller texels' copies race on an M4 Max and keep
+// the copy engine's row order)
+inline bool copiedThroughPool(const Texture &t, uint32_t x, uint32_t y, uint32_t w, uint32_t h)
+{
+    Texture scratch;
+    return plainRowsPooled(t) && (t.bpp == 8 || t.bpp == 16) && !x && !y && w == t.width && h == t.height &&
+           overlapsRows(storedRows(t, t, scratch));
 }
 
 }  // namespace gm20b

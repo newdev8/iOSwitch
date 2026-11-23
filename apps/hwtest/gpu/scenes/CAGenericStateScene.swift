@@ -1,6 +1,7 @@
 import Foundation
 import HWTestCore
 import Metal
+import simd
 
 /// Core Animation's generic state (the uber shader) declares color_cube0, color_cube1 and lut_tex as texture3d
 /// arguments at fragment indices 12, 13 and 14. Boot 15's first key press drew it with a 1-texel BGRA8 texture at index
@@ -51,10 +52,25 @@ struct CAGenericStateScene: GPUScene {
         ].filter { kind != "apple" || $0.0 != Self.mistyped }
         let raw = kind == "gm20b"
         let zeros = [UInt8](repeating: 0, count: 256)
-        for (label, cubes) in cases {
+        // the facade's two arms past the Mac's cases, both held to its nothing case: into a target its usage keeps off
+        // compressed memory for life, and with every buffer slot the state may read bound to 64 KiB of zeros (the
+        // transform at its first 64 bytes)
+        let plain = try gpu.texture(
+            .bgra8Unorm, Self.size, Self.size, usage: [.renderTarget, .shaderRead, .pixelFormatView]
+        )
+        let wide = try gpu.buffer(65536), wideTransform = try gpu.buffer(65536)
+        withUnsafeBytes(of: matrix_identity_float4x4) {
+            wideTransform.contents().copyMemory(from: $0.baseAddress!, byteCount: $0.count)
+        }
+        var runs = cases.map { (label: $0.0, cubes: $0.1, into: target, padded: false) }
+        if raw {
+            runs.append((label: "nothing_plain", cubes: [nil, nil, nil], into: plain, padded: false))
+            runs.append((label: "nothing_padded", cubes: [nil, nil, nil], into: target, padded: true))
+        }
+        for (label, cubes, into, padded) in runs {
             let draw = { (commands: MTLCommandBuffer) in
                 let pass = MTLRenderPassDescriptor()
-                pass.colorAttachments[0].texture = target
+                pass.colorAttachments[0].texture = into
                 pass.colorAttachments[0].loadAction = .clear
                 pass.colorAttachments[0].storeAction = .store
                 pass.colorAttachments[1].texture = scratch
@@ -68,6 +84,11 @@ struct CAGenericStateScene: GPUScene {
                 )
                 for slot in 4 ..< 8 { encoder.setVertexBytes(zeros, length: zeros.count, index: slot) }
                 for slot in 4 ..< 16 { encoder.setFragmentBytes(zeros, length: zeros.count, index: slot) }
+                if padded {
+                    for slot in [0, 3, 4, 5, 6, 7] { encoder.setVertexBuffer(wide, offset: 0, index: slot) }
+                    encoder.setVertexBuffer(wideTransform, offset: 0, index: 2)
+                    for slot in 0 ..< 16 { encoder.setFragmentBuffer(wide, offset: 0, index: slot) }
+                }
                 encoder.setFragmentTextures(cubes, range: 12 ..< 15)
                 encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
                 encoder.endEncoding()
@@ -76,10 +97,11 @@ struct CAGenericStateScene: GPUScene {
             result.metrics.set("path_" + label, timing.path)
             result.metrics.set("wait_ms_" + label, timing.wallMilliseconds, digits: 2)
             if !timing.path.hasPrefix("error:") {
-                let pixels = try await gpu.read(target, bytesPerPixel: 4)
+                let pixels = try await gpu.read(into, bytesPerPixel: 4)
                 result.picture(
-                    label, bytes: pixels, metalFormat: target.pixelFormat.rawValue, width: Self.size,
-                    height: Self.size, golden: label == Self.mistyped ? "nothing" : label, cleared: [0, 0, 0, 1]
+                    label, bytes: pixels, metalFormat: into.pixelFormat.rawValue, width: Self.size,
+                    height: Self.size, golden: label == Self.mistyped || into === plain || padded ? "nothing" : label,
+                    cleared: [0, 0, 0, 1]
                 )
             }
             guard raw else { continue }

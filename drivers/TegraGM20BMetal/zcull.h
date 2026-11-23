@@ -105,10 +105,18 @@ inline uint32_t zcullZFormat(uint32_t metal)
     return metal == 250 ? 1u : 3u;  // Depth16Unorm: FP; Depth32Float and _Stencil8: ZF32_1
 }
 
+// SET_ZCULL_CRITERION's word of a stencil criterion: its SFUNC (NEVER .. ALWAYS), SREF and SMASK; NO_INVALIDATE and
+// FORCE_MATCH clear, so writing it invalidates the region (clb197.h), which is why it is set with the region, not by
+// a draw
+constexpr uint32_t zcullCriterion(uint32_t sfunc, uint32_t sref, uint32_t smask)
+{
+    return (sfunc & 7) | (sref & 0xff) << 16 | (smask & 0xff) << 24;
+}
+
 // nvk_CmdBeginRendering's zcull region, its direction `dir`, the region's storage [storage, storage + storageBytes)
-// where a pass stores or loads it (zcull_planes.h), else none
+// where a pass stores or loads it (zcull_planes.h), else none; `criterion` its stencil criterion (NEVER: NVK's)
 inline void zcullRegionWords(Push &p, const ZcullRegion &r, uint32_t zetaFormat, uint8_t dir, uint64_t storage = 0,
-                             uint64_t storageBytes = 0)
+                             uint64_t storageBytes = 0, uint32_t criterion = 0)
 {
     const uint64_t end = storage ? storage + storageBytes : 0;
     p.m(0x1590, 0);                                                    // SET_ACTIVE_ZCULL_REGION
@@ -118,7 +126,7 @@ inline void zcullRegionWords(Push &p, const ZcullRegion &r, uint32_t zetaFormat,
     p.inc(0x07c0, {r.width, r.height, r.layers, 0});          // SET_ZCULL_REGION_SIZE_A..C, _PIXEL_OFFSET_C
     p.inc(0x15fc, {r.x, r.y});                                // SET_ZCULL_REGION_PIXEL_OFFSET_A, _B
     p.m(0x02e8, 1 | (r.normalizedAliquots & 0xffffff) << 4);  // SET_ZCULL_SUBREGION
-    p.m(0x0dd8, 0);                                           // SET_ZCULL_CRITERION: SFUNC_NEVER
+    p.m(0x0dd8, criterion);                                   // SET_ZCULL_CRITERION
     p.m(0x0dbc, (dir == kZcullGreater ? 1u : 0u) | zcullZFormat(zetaFormat) << 16);  // SET_ZCULL_DIR_FORMAT
     p.nonInc(0x02f8, r.subregions, r.subregionCount);                                // SET_ZCULL_SUBREGION_ALLOCATION
     p.m(0x02fc, r.algorithm);                                                        // ASSIGN_ZCULL_SUBREGIONS

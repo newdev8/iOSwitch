@@ -5,17 +5,19 @@ import HWTestGPU
 import Metal
 
 /// Extended-range targets under overlapping premultiplied source-over draws, each route the driver can draw them by
-/// (`routes`; today planes: the codes encoded by the program, RGB10A8_2P_XR10 550 in its two planes over a 'b3a8'
-/// surface, BGRA10_XR 552 as its code words over a 'w40a' surface), against Apple's codes. Golden scene: per format, 4
-/// bands of rows (in range; overbright and past XR's range; NaN in a colour or in alpha; opaque, clear and near-range
-/// mixes) each with 8 quads in one pass, quad k covering the band from column 16k on, so column band j blends quads 0
-/// to j over the clear: 32 regions, each one texel of XrBlendRoutesGoldens (an M4 Max, this scene). Per format and
-/// route: <format>_<route>_worst_code, the largest difference of a channel's code from Apple's over every texel (alpha:
-/// 550's byte, 552's code); <format>_<route>_off, texels not Apple's; xr_<route>_worst_code, both formats' largest.
-/// Timing scene: the 8 staircase quads of band 0 over a 1280x720 surface of each format, one pass; <format>_<route>_us,
-/// its GPU time, and us_<route> both formats' sum. Reported, not judged: the planes route rounds to codes at every draw
-/// where Apple's tile keeps half until the store. Judged: a route ran, every command buffer on the driver, no command
-/// buffer failed. A cell whose command buffer fails or whose target cannot be made reports <format>_<route>_failed.
+/// (`routes`; today stand_in: the pass renders into an RGBA16Float stand-in the ROP blends and stores its codes,
+/// RGB10A8_2P_XR10 550 into its two planes over a 'b3a8' surface, BGRA10_XR 552 into its code words over a 'w40a'
+/// surface), against Apple's codes. Golden scene: per format, 4 bands of rows (in range; overbright and past XR's
+/// range; NaN in a colour or in alpha; opaque, clear and near-range mixes) each with 8 quads in one pass, quad k
+/// covering the band from column 16k on, so column band j blends quads 0 to j over the clear: 32 regions, each one
+/// texel of XrBlendRoutesGoldens (an M4 Max, this scene). Per format and route: <format>_<route>_worst_code, the
+/// largest difference of a channel's code from Apple's over every texel (alpha: 550's byte, 552's code);
+/// _band<b>_worst, the same within band b; <format>_<route>_off, texels not Apple's; xr_<route>_worst_code, both
+/// formats' largest. Timing scene: the 8 staircase quads of band 0 over a 1280x720 surface of each format, one pass;
+/// <format>_<route>_us, its GPU time, and us_<route> both formats' sum. Reported, not judged: the ROP blends in half
+/// rounding toward zero where Apple's rounds to nearest, and reads a sum past XR's range unclamped where Apple's tile
+/// read clamps it (band 1). Judged: a route ran, every command buffer on the driver, no command buffer failed. A cell
+/// whose command buffer fails or whose target cannot be made reports <format>_<route>_failed.
 struct XrBlendRoutesTest: HWTest {
     let id = "gpu.gm20b.xr_blend_routes"
     let name = "Overlapping source-over draws into RGB10A8_2P_XR10 and BGRA10_XR surfaces per route, against Apple"
@@ -54,7 +56,7 @@ struct XrBlendRoutesTest: HWTest {
         ),
     ]
 
-    static let routes = [Route(name: "planes", make: surfaceTarget)]
+    static let routes = [Route(name: "stand_in", make: surfaceTarget)]
 
     static let band = 16, quads = 8, bands = 4
     static let clear = MTLClearColor(red: 0.1, green: 0.6, blue: -0.2, alpha: 0.5)
@@ -102,6 +104,7 @@ struct XrBlendRoutesTest: HWTest {
                     worst = max(worst, apart.worst)
                     metrics.set(cell + "_worst_code", apart.worst)
                     metrics.set(cell + "_off", apart.off)
+                    for (b, bandWorst) in apart.bands.enumerated() { metrics.set(cell + "_band\(b)_worst", bandWorst) }
                     ran += 1
                     let timing = try await Self.timed(gpu, format, route)
                     guard !timing.path.hasPrefix("error:") else {
@@ -120,7 +123,7 @@ struct XrBlendRoutesTest: HWTest {
         metrics.set("paths", gpu.paths.isEmpty ? "-" : gpu.paths.text)
         let counted = GM20BFacade.counters(of: gpu.device)
         metrics.merge(PathTally.counterMetrics(before: before, after: counted))
-        metrics.fitLog(within: 720, keeping: ["paths", "failed_cbs", "xr_planes_worst_code", "us_planes"])
+        metrics.fitLog(within: 720, keeping: ["paths", "failed_cbs", "xr_stand_in_worst_code", "us_stand_in"])
         return .judged(
             [
                 ("a route drew a format", ran > 0), ("every command buffer on the driver", gpu.paths.offRaw.isEmpty),
@@ -131,19 +134,22 @@ struct XrBlendRoutesTest: HWTest {
 
     static func region(_ x: Int, _ y: Int) -> Int { (y / band) * quads + x / band }
 
-    /// Texels not Apple's, and the largest difference of a channel's code from Apple's
-    static func apart(_ texels: [UInt64], _ format: Format) -> (off: Int, worst: Int) {
-        var off = 0, worst = 0
+    /// Texels not Apple's, and the largest difference of a channel's code from Apple's, over all and per band
+    static func apart(_ texels: [UInt64], _ format: Format) -> (off: Int, worst: Int, bands: [Int]) {
+        var off = 0
+        var bandWorst = [Int](repeating: 0, count: bands)
         for (i, t) in texels.enumerated() {
-            let want = format.golden[region(i % (band * quads), i / (band * quads))]
+            let (x, y) = (i % (band * quads), i / (band * quads))
+            let want = format.golden[region(x, y)]
             guard t != want else { continue }
             off += 1
-            worst = max(worst, zip(format.codes(t), format.codes(want)).map { abs($0 - $1) }.max() ?? 0)
+            let apart = zip(format.codes(t), format.codes(want)).map { abs($0 - $1) }.max() ?? 0
+            bandWorst[y / band] = max(bandWorst[y / band], apart)
         }
-        return (off, worst)
+        return (off, bandWorst.max() ?? 0, bandWorst)
     }
 
-    /// The planes route: the format's surface, its texture over plane 0, read back through a CPU lock (550: the alpha
+    /// The stand-in route: the format's surface, its texture over plane 0, read back through a CPU lock (550: the alpha
     /// byte above the word)
     static func surfaceTarget(_ gpu: GPU, _ format: Format, _ width: Int, _ height: Int) throws -> Target {
         var made: CVPixelBuffer?

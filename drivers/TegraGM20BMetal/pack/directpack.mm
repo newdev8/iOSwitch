@@ -201,8 +201,7 @@ std::vector<uint8_t> testClasses(const gm20b::PackPipeline &p, const std::string
 }
 
 struct Counts {
-    uint32_t made = 0, refused = 0, failed = 0, dropped = 0, split = 0, variants = 0, planes = 0, planesRefused = 0,
-             sampled = 0;
+    uint32_t made = 0, refused = 0, failed = 0, dropped = 0, split = 0, variants = 0, sampled = 0;
     uint32_t free[4] = {}, freeFetching = 0, freeRefused = 0, freeBarrier = 0;
     uint32_t written = 0, twins = 0;
     uint32_t reflected[2] = {}, unreflected[2] = {};  // render, compute
@@ -255,10 +254,8 @@ void makeFetchFree(gm20b::Direct &direct, Writer &w, const probe::State &s, cons
 
 // A state's records: its own, its barrier form where its own is the storage form (one that computes the pipeline's blend
 // has its twin only for a debug build's probe: gpu.cpp Device::pipeline), its fetch-free form, and one per test class
-// its draws can ask for (named " | tests=<class>" after its key, as the runtime names them); then, for a state of
-// RGB10A8_2P_XR10 colours, all but the fetch-free form again of its two-plane form (xr_pass.h), each named " | xr2p"
-// after. A line naming a sampled two-plane or a written variant (" | xrs=", " | wtex=") makes that variant's records
-// alone, its name last.
+// its draws can ask for (named " | tests=<class>" after its key, as the runtime names them). A line naming a sampled
+// two-plane or a written variant (" | xrs=", " | wtex=") makes that variant's records alone, its name last.
 void makeState(gm20b::Direct &direct, Writer &w, id<MTLLibrary> qc, const std::string &line,
                gm20b::ProbeTextures textures, const probe::State &s, Counts &n)
 {
@@ -304,12 +301,6 @@ void makeState(gm20b::Direct &direct, Writer &w, id<MTLLibrary> qc, const std::s
                                                  : n.failed)++;
     n.sampled += s.xrSlots && outcome == gm20b::CompileOutcome::Made;
     n.written += !s.written.empty() && outcome == gm20b::CompileOutcome::Made;
-    if (outcome != gm20b::CompileOutcome::Made || !probe::twoPlaneColors(s.key))
-        return;
-    gm20b::ProbeTextures planes = textures;
-    planes.twoPlane = true;
-    const std::string planesName = gm20b::kXrPlanesVariant + sampled;
-    (forms(planes, planesName.c_str()) == gm20b::CompileOutcome::Made ? n.planes : n.planesRefused)++;
 }
 
 void kernel(Writer &w, const std::string &key, gm20b::CompileOutcome outcome, const std::string &why,
@@ -420,12 +411,11 @@ int main(int argc, char **argv)
             });
         fclose(w.f);
         fprintf(stderr,
-                "directpack: %u states made (%u split, %u test variants, %u two-plane forms, %u refused, %u sampled "
-                "two-plane variants, %u written-format variants), %u refused, %u failed, %u corpus lines making no "
-                "state; %u kernels made, %u refused, %u failed, %u dispatch lines making no kernel\n",
-                counts.made, counts.split, counts.variants, counts.planes, counts.planesRefused, counts.sampled,
-                counts.written, counts.refused, counts.failed, counts.dropped, kernels[0], kernels[1], kernels[2],
-                kernelsDropped);
+                "directpack: %u states made (%u split, %u test variants, %u sampled two-plane variants, %u "
+                "written-format variants), %u refused, %u failed, %u corpus lines making no state; %u kernels made, %u "
+                "refused, %u failed, %u dispatch lines making no kernel\n",
+                counts.made, counts.split, counts.variants, counts.sampled, counts.written, counts.refused,
+                counts.failed, counts.dropped, kernels[0], kernels[1], kernels[2], kernelsDropped);
         fprintf(stderr,
                 "directpack: fetch-free forms: %u on rung 2, %u on rung 3 (%u reading other colours behind a barrier); "
                 "%u still fetch, %u otherwise refused; %u stride twins\n",

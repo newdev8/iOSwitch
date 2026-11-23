@@ -2,8 +2,12 @@
 """Add the render states a device made at run time, read from a pulled logarchive, to the precompile corpus.
 
 usage: bazel run //tools/gpu:logharvest -- <boot.logarchive>... [--build <IPSW build>] [--corpus <corpus.log>]
-                                            [--crawl <the build's crawl inventory.json>] [--dry-run]
+                                            [--crawl <the build's crawl inventory.json>] [--dry-run | --check]
        bazel run //tools/gpu:logharvest -- --ndjson <file>...   (`log show --style ndjson --info` output instead)
+
+--check fails (exit 1) where a pull's OS states would not all come from the pack: a state an OS process made at run time
+that the corpus lacks, or one it lacks and no line can hold (each listed, the corpus left as it was). Run it on every
+pull: every state the OS draws with must come from the pack, as the shader compiler's wait for one starves the boot.
 
 The lines it reads, os_log's (the runtime's in debug builds, TegraGM20BMetalComplete.mm and TegraGM20BMetalCubic.mm):
     SwitchMetal: a state the pack lacks <made|not made|refused> in <ms> ms (<QoS>) after <ms> ms for a compile slot:
@@ -17,7 +21,7 @@ The lines it reads, os_log's (the runtime's in debug builds, TegraGM20BMetalComp
     OS version: <build>, deviceBuildVersion is "<build>", iPhone OS <version> (<build>)
 A key is TegraGM20BMetalPipelineKey.h pipelineKey's text: "<descriptor fields>  | v <function> <constants> | f
 <function> <constants>[ | <vl|vp|fl|fp> <linked function>...][ | l <framework>]", then a variant's name
-(TegraGM20BMetalCubic.mm renderVariant): "[ | cubic <binds>][ | tests=<n>][ | xr2p][ | xrs=<slots>][ |
+(TegraGM20BMetalCubic.mm renderVariant): "[ | cubic <binds>][ | tests=<n>][ | xrs=<slots>][ |
 wtex=<slot>:<format>,...]". Each state becomes the line
     R ok=1 label=<Core Animation label, else -> os=<build> <fields> | v <function> lib=<path> <constants> | f ... |
         [cubic <binds> | ][xrs=<slots> | ][wtex=<slot>:<format>,... | ]
@@ -27,8 +31,10 @@ state gets its own line first.
 
 A USB pull holds several boots with overlapping clocks: each boot (log show's bootUUID) is read alone, and names its OS
 build in its own lines ("OS version: 24B119"). A boot naming none is skipped unless --build names it; one naming
-another build than --build is refused. A key's test class (" | tests=<n>") and two-plane pass (" | xr2p") are left
-off, as the pack builder makes those of every line. A framework's library path is the build's archive inventory's, the
+another build than --build is refused. A key's test class (" | tests=<n>") is left off, as the pack builder makes
+those of every line. A driver before the extended-range stand-in named a two-plane pass (" | xr2p") and the colours
+whose half shadow a pass held (" | xrsh=<colours>") after the test class; its logs' keys are read without them, as
+the state each names is what a device draws with now. A framework's library path is the build's archive inventory's, the
 corpus's, else its crawl's (--crawl: @ipsw//:crawl_inventory of the build's kind).
 
 The made line's key is the cache key (render_key.h renderCacheKey): a state that links functions carries
@@ -97,7 +103,8 @@ BUILD_LINES = (
 # A variant's name segments a corpus line carries (make_pack.state_key: cubic binds, sampled two-plane slots, written
 # formats), and those the pack builder makes of every line it takes (directpack.mm makeState)
 LINE_VARIANTS = ('cubic ', 'xrs=', 'wtex=')
-BUILDER_FORMS = re.compile(r' \| (tests=\d+|xr2p)(?= \| |$)')
+BUILDER_FORMS = re.compile(r' \| tests=\d+(?= \| |$)')
+EARLIER_FORMS = re.compile(r' \| (?:xr2p|xrsh=\d+)(?= \| |$)')
 OWN_APPS = ('SwitchHWTest',)
 CA_LABEL = 'com.apple.coreanimation.'
 FRAMEWORK_PATH = re.compile(r' lib=(/System/Library/(?:Private)?Frameworks/(\w+)\.framework/default\.metallib)')
@@ -374,10 +381,10 @@ def states(boot: Boot, held: set[str]) -> Iterator[tuple[str, str, str, str | No
 
 
 def untested(key: str | None) -> str | None:
-    """Give a key without the forms the pack builder makes of each line it takes: its test class and two-plane pass."""
+    """Give a key without the forms the pack builder makes of each line it takes: its test class."""
     if not key:
         return key
-    tails, key = cache_tails(key), without_cache_tails(key)
+    tails, key = cache_tails(key), EARLIER_FORMS.sub('', without_cache_tails(key))
     name = make_pack.packfile.variant_name(key)
     return key[: len(key) - len(name)] + BUILDER_FORMS.sub('', name) + tails
 
@@ -389,7 +396,13 @@ def cache_tails(key: str) -> str:
 
 def base_key(key: str) -> str:
     """Give the key of the state a variant's key names (runtime/pack.h variantNameAt)."""
+    key = EARLIER_FORMS.sub('', key)
     return key[: len(key) - len(make_pack.packfile.variant_name(key))]
+
+
+def own_or_refused(process: str, why: str) -> bool:
+    """Whether a left-out state is one the pack need not hold: our own app's, or one the device refused itself."""
+    return process.startswith(OWN_APPS) or why == 'refused on the device'
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -400,6 +413,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--corpus', type=Path, default=PROJECT / PRECOMPILE / 'corpus.log')
     parser.add_argument('--crawl', type=Path, help="the build's crawl inventory.json, for framework library paths")
     parser.add_argument('--dry-run', action='store_true', help='print the lines instead of adding them')
+    parser.add_argument('--check', action='store_true', help="fail where an OS state is not the corpus's")
     args = parser.parse_args(argv)
     corpus = args.corpus.read_text().splitlines()
     new, report = harvest(
@@ -411,6 +425,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f'{process}: {report.added[process]} added, {report.present[process]} already in the corpus')
     for (process, why), count in sorted(report.left.items()):
         print(f'{process}: {count} left out: {why}')
+    if args.check:
+        unheld = [why for (process, why) in report.left if not own_or_refused(process, why)]
+        print('\n'.join(new))
+        print(f'{args.corpus}: {len(new)} OS states missing, {len(unheld)} kinds of OS state no line holds')
+        return 1 if new or unheld else 0
     if args.dry_run:
         print('\n'.join(new))
     elif new:

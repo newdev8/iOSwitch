@@ -26,7 +26,7 @@ MAGIC = b'GM20BPK1'
 # entries past 32 (the count's high byte, the rest of the entries and their bound and memory bits in a far block in the
 # blob section, an argument table's entry past 254), programs' uniform buffers past set-0 byte 496 (a far table in the
 # blob section); 28: the selector section (PackSelectors), a state's shader-side stencil push word (shadow_stencil_word)
-VERSION = 29
+VERSION = 30
 SECTIONS = 16  # runtime/pack.h PackSectionCount
 ENTRY_COMPARES = 1  # runtime/pack.h kEntryCompares: a handle's sampler slot the state samples by comparison
 # PackIteratedBlend: count, enable, constants, uniformSlot, uniformOffset, uniformWords, reserved, alphaSource,
@@ -94,7 +94,7 @@ def fnv(b: bytes, h: int = 0xCBF29CE484222325) -> int:
 
 # pack.h kPackEntries: the set-0 entries a PackPipeline holds; the rest are in its far block (set_entries.h)
 PACK_ENTRIES = 32
-SET_ENTRIES_MAX = 378  # set_entries.h kSetEntriesMax
+SET_ENTRIES_MAX = 370  # set_entries.h kSetEntriesMax
 FAR_AT_LIMIT = 1 << 24  # PackPipeline.farEntriesAt and PackProgram.farUbos: 24 bits
 V20_FAR_AT = 13  # PackPipeline.farEntriesAt's byte in the PIPELINE_V20 tail (its heapReserved before v27)
 V22_SPILL_HIGH = 2 * 16 + 2  # PackPipeline.spillEntryHigh's byte in the PIPELINE_V22 tail (its xrReserved before v27)
@@ -184,9 +184,9 @@ def push_bytes(push: list[tuple[int, int]]) -> bytes:
     return struct.pack('<I32I', mask, *words)
 
 
-# A key's variant name (runtime/pack.h variantNameAt): " | cubic ...", " | tests=<n>", " | xr2p", " | xrs=<slots>",
+# A key's variant name (runtime/pack.h variantNameAt): " | cubic ...", " | tests=<n>", " | xrs=<slots>",
 # " | wtex=<slot>:<format>,..." at its end
-VARIANT_NAME = re.compile(r'( \| cubic [^|]*?)?( \| tests=\d+)?( \| xr2p)?( \| xrs=\d+)?( \| wtex=[\d:,]+)?$')
+VARIANT_NAME = re.compile(r'( \| cubic [^|]*?)?( \| tests=\d+)?( \| xrs=\d+)?( \| wtex=[\d:,]+)?$')
 
 
 def variant_name(key: str) -> str:
@@ -228,7 +228,6 @@ def pipeline_bytes(rec: dict, key_offset: int, blob_off: int, variants_off: int 
     flags |= 16 if variant_name(rec['key']) else 0
     flags |= 32 if rec.get('form') == 'free' else 0
     flags |= 64 if rec.get('turn_refused') else 0  # PipelineTurnRefused
-    flags |= 128 if rec.get('two_plane') else 0  # PipelineTwoPlane
     flags |= 256 if rec.get('raster_ordered') else 0  # PipelineRasterOrdered
     head = struct.pack(
         '<QIIIIIBBBBHHI',
@@ -246,9 +245,7 @@ def pipeline_bytes(rec: dict, key_offset: int, blob_off: int, variants_off: int 
         rec['set_size'],
         flags,
     )
-    dynamic = struct.pack(
-        '<BBH', rec.get('blend_color_word', 0), rec.get('half_blend_color_word', 0), rec.get('iterated', 0)
-    )
+    dynamic = struct.pack('<HH', rec.get('half_blend_color_word', 0), rec.get('iterated', 0))
     storage = struct.pack(
         '<BBBB8I',
         rec.get('storage_mask', 0),

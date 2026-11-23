@@ -10,9 +10,11 @@ import Metal
 /// blocks into the texture is in flight: none fails (`decode_view_release_failed` 0) and the texture reads its decode
 /// of the last blocks. Once all of it is gone and one more command buffer completed, the device holds no more texture
 /// headers than before (`decode_memory_left` at most 0, of switchMetalMemory headers_left, which is the process's: below
-/// 0 is earlier tests' retired backings going meanwhile; the pool and write-combined bytes reported). Whether a view
-/// goes before its upload was encoded is the worker's timing; either order must hold. Red: a view whose image or blocks
-/// went with the texture, a decode into a view already gone, or headers a family keeps.
+/// 0 is earlier tests' retired backings going meanwhile) and no more texture memory, the textures' and views' images and
+/// the kept blocks (`decode_texture_bytes_left` at most 0, of switchMetalMemory textures; the pool and write-combined
+/// bytes reported). Whether a view goes before its upload was encoded is the worker's timing; either order must hold.
+/// Red: a view whose image or blocks went with the texture, a decode into a view already gone, or headers, images or
+/// kept blocks a family keeps.
 struct DecodeViewLifetimeTest: HWTest {
     let id = "gpu.decode.view_lifetime"
     let name = "Views of decoded textures outlive their texture, and their family's memory goes with the last of them"
@@ -43,14 +45,20 @@ struct DecodeViewLifetimeTest: HWTest {
         metrics.set("decode_pool_delta_kib", ((after["pool"] ?? 0) - (before["pool"] ?? 0)) >> 10)
         metrics.set("decode_wc_delta_kib", ((after["wc"] ?? 0) - (before["wc"] ?? 0)) >> 10)
         let left = (before["headers_left"] ?? 0) - (after["headers_left"] ?? 0)
-        return .judged(
-            [
-                ("\(outlives) texels of a view whose texture went off its decode", outlives == 0),
-                ("\(released) texels of the texture off its last blocks", released == 0),
-                ("\(gpu.commandBufferErrors.count) command buffers failed", gpu.commandBufferErrors.isEmpty),
-                ("\(left) texture headers still held", left <= 0),
-            ], metrics, proof: gpu.proof
-        ).onRawPath(gpu)
+        var checks = [
+            ("\(outlives) texels of a view whose texture went off its decode", outlives == 0),
+            ("\(released) texels of the texture off its last blocks", released == 0),
+            ("\(gpu.commandBufferErrors.count) command buffers failed", gpu.commandBufferErrors.isEmpty),
+            ("\(left) texture headers still held", left <= 0),
+        ]
+        if let textures = after["textures"] {
+            let bytesLeft = textures - (before["textures"] ?? 0)
+            metrics.set("decode_texture_bytes_left", bytesLeft)
+            checks.append(("\(bytesLeft) bytes of images and kept blocks still held", bytesLeft <= 0))
+        } else if !after.isEmpty {
+            checks.append((GM20BFacade.missing("textures", on: gpu.device), false))
+        }
+        return .judged(checks, metrics, proof: gpu.proof).onRawPath(gpu)
     }
 
     /// The 185 view's texels off a 185 texture of the rotated blocks, after its texture went and they were uploaded
@@ -112,7 +120,8 @@ struct DecodeViewLifetimeTest: HWTest {
 /// followed by a command buffer that samples the texture once, waited for. Reported: the time from the call to that
 /// command buffer's completion (`decode_ms_pvrtc_2048`, `decode_ms_hdr_2048`, `decode_ms_8x4_1024`,
 /// `decode_ms_8x4_1024_three_forms`; no threshold: none was measured) and the pool's chunk growths meanwhile
-/// (`decode_pool_grows`). Judged: every texture made, no command buffer failed.
+/// (`decode_pool_grows`). Judged: every texture made, no command buffer failed, and no command ring outgrown by the
+/// uploads (`decode_rings_outgrown` 0, switchMetalCounters rings_outgrown: an upload's decode is one job's few draws).
 struct DecodeUploadCostTest: HWTest {
     let id = "gpu.decode.upload_cost"
     let name = "Decode on upload: large uploads' time to a sampling command buffer's completion"
@@ -124,6 +133,7 @@ struct DecodeUploadCostTest: HWTest {
         guard kind == "gm20b" else { return .skip("the default device is not the facade (\(kind))") }
         let hdr = context.ios >= 27
         let before = GM20BFacade.memory(of: gpu.device)
+        let ringsBefore = GM20BFacade.counters(of: gpu.device)["rings_outgrown"]
         var metrics = Metrics()
         var unmade: [String] = []
         func timed(
@@ -170,12 +180,17 @@ struct DecodeUploadCostTest: HWTest {
         let after = GM20BFacade.memory(of: gpu.device)
         metrics.set("decode_pool_grows", (after["grows"] ?? 0) - (before["grows"] ?? 0))
         metrics.set("unmade", unmade.isEmpty ? "-" : unmade.joined(separator: ","))
-        return .judged(
-            [
-                ("textures or views not made: \(unmade)", unmade.isEmpty),
-                ("\(gpu.commandBufferErrors.count) command buffers failed", gpu.commandBufferErrors.isEmpty),
-            ], metrics, proof: gpu.proof
-        ).onRawPath(gpu)
+        var checks = [
+            ("textures or views not made: \(unmade)", unmade.isEmpty),
+            ("\(gpu.commandBufferErrors.count) command buffers failed", gpu.commandBufferErrors.isEmpty),
+        ]
+        if let rings = GM20BFacade.counters(of: gpu.device)["rings_outgrown"], let ringsBefore {
+            metrics.set("decode_rings_outgrown", rings - ringsBefore)
+            checks.append(("\(rings - ringsBefore) command rings outgrown", rings == ringsBefore))
+        } else if !before.isEmpty {
+            checks.append((GM20BFacade.missing("rings_outgrown", on: gpu.device), false))
+        }
+        return .judged(checks, metrics, proof: gpu.proof).onRawPath(gpu)
     }
 
     static func sampleOnce(_ gpu: GPU, _ texture: MTLTexture) async throws {

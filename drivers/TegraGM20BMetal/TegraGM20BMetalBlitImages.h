@@ -19,6 +19,7 @@ inline bool blitImage(SwitchMetalTexture *texture, uint32_t level, gm20b::Textur
     image.type = texture->_raw.type;
     image.format = texture->_raw.format;
     image.stencilTemp = owner->_raw.stencilTemp;
+    image.sampleRows = owner->_raw.sampleRows;
     return true;
 }
 

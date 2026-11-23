@@ -135,6 +135,12 @@ struct DeviceHarness {
         return d.tic_.va + 32ull * tic;
     }
 
+    // A full clear of a compressed target to the ZBC value `e` (Device::clearZbc's ask); true where the table holds it
+    static bool zbcHeld(Device &d, const TegraGM20BAbiZbc &e)
+    {
+        return d.zbcHeld(e);
+    }
+
     // Compressed buffers made off the render thread that no texture or backing took yet
     static size_t compReady(Device &d)
     {

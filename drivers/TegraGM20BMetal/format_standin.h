@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Colour targets of the formats the GM20B renders none of (FormatInfo rt 0) that Metal renders: R8Unorm_sRGB (11),
-// A1BGR5Unorm (41), ABGR4Unorm (42), RGB9E5Float (93), BGRA10_XR_sRGB (553) and BGR10_XR_sRGB (555). A pass renders such an
+// A1BGR5Unorm (41), ABGR4Unorm (42), RGB9E5Float (93) and Apple's extended-range formats (550 to 555, xr.h: the GM20B
+// renders their codes as integers, which it cannot blend, and holds no tile of their halves). A pass renders such an
 // attachment into a block-linear stand-in of the command buffer's (backing tag kFormatStandInTag + slot), its states made
-// for the stand-in's format (TegraGM20BMetalYcbcrTargets.mm standInTargetState), filled from the texture before a pass that does not
+// for the stand-in's format (TegraGM20BMetalYcbcrTargets.mm standInTargetState; an extended-range one's the descriptor's own,
+// which the translator lowers onto the stand-in), filled from the texture before a pass that does not
 // clear it and put back after one that stores it. As an M4 Max renders them (probe/fmt: fmtq, edges):
 //  - R8Unorm_sRGB holds 8-bit sRGB codes after every draw: an RGBA8Unorm_sRGB stand-in, whose first byte the copy engine
 //    moves in and out (BlitEncoder::copyFirstByte); RG8Unorm_sRGB (31) its first two (copyFirstTwoBytes), the GM20B having
@@ -15,19 +17,13 @@
 //  - RGB9E5Float holds its own words after every draw, each mantissa truncated, a clear's rounded: the same stand-in, the store
 //    state truncating, into the words viewed as R32Uint. A pass whose draws do not blend over one another stores Metal's words;
 //    blends over earlier draws lie within the truncations Metal makes between them.
-//  - BGR10_XR_sRGB (555): BGR10_XR's word (xr.h), each colour code through Metal's sRGB tables (xr_srgb.h). GM20B
-//    applies an sRGB transfer to 8-bit UNORM channels and sRGB block formats alone (nil_formats.csv), never to a 10-bit
-//    offset code, so the transfer is the load and store states' work, once a pass. Metal's tile holds such a colour as half
-//    through the pass and encodes it at the store: an RGBA16Float stand-in, which the 3D engine renders and blends as
-//    Metal's tile does, filled with the texels' reads by the texture's own sampling conversion and stored through Metal's
-//    write encode into the words viewed as R32Uint.
-//  - BGRA10_XR_sRGB (553): the same over BGRA10_XR's fields, viewed as RGBA16Uint. Its alpha is BGRA10_XR's, linear (m2v
-//    ExtendedRange::code and code_value take alpha before the sRGB tables, as Apple's GPUs measured), held as half in the
-//    tile and the stand-in alike.
-//  - RGB10A8_2P_XR10_sRGB (551): BGR10_XR_sRGB's colour codes in RGB10A8_2P_XR10's word and its alpha byte linear
-//    (xr.h), the same RGBA16Float stand-in, loaded from the texels and stored into them: over a surface's two planes
-//    from both and into both (the word plane and the alpha plane two targets of the store's pass), of a descriptor from
-//    and into its texels of a word and a byte viewed as RG32Uint.
+//  - the extended-range formats: an RGBA16Float stand-in, Metal's tile (xr.h xrTargetState), which the ROP blends,
+//    filled with Metal's blend read of the codes and stored through Metal's write encode into the words viewed as R32Uint
+//    (BGR10_XR and its twin), RGBA16Uint (BGRA10_XR's fields) or RG32Uint (a descriptor's RGB10A8_2P_XR10, a word and a
+//    byte; one over a surface's two planes from both and into both, the word plane and the alpha plane two targets of the
+//    store's pass); a loaded pass's store keeps the texels no draw changed. The sRGB twins' colour codes go through
+//    Metal's sRGB tables (xr_srgb.h), which GM20B applies to no 10-bit offset code (nil_formats.csv: 8-bit UNORM channels
+//    and sRGB block formats alone).
 //  - BGRA4Unorm (44): ABGR4Unorm's rules over NIL's B4G4R4A4_UNORM (blue in the low bits), its header NIL's.
 //  - ARGB8Unorm (84) and its sRGB form (85): sampled through RGBA8's header with the channels rotated (its alpha byte first:
 //    the header's red source reads alpha); no colour target of that byte order, so an RGBA8 (an sRGB one's RGBA8_sRGB)
@@ -52,6 +48,8 @@ constexpr uint32_t kR8UnormSrgb = 11, kRg8UnormSrgb = 31, kA1Bgr5Unorm = 41, kAb
 // The format a pass renders such an attachment into, 0 for any other
 constexpr uint32_t formatStandIn(uint32_t format)
 {
+    if (xrTarget(format))
+        return kXrStandInFormat;
     switch (format) {
     case kR8UnormSrgb:
     case kRg8UnormSrgb:
@@ -64,10 +62,6 @@ constexpr uint32_t formatStandIn(uint32_t format)
     case kBgra4Unorm:
     case kRgb9e5Float:
         return 125;  // RGBA32Float
-    case kBgra10XrSrgb:
-    case kBgr10XrSrgb:
-    case kRgb10A8XrSrgb:
-        return 115;  // RGBA16Float
     default:
         return 0;
     }
@@ -77,7 +71,7 @@ constexpr uint32_t formatStandIn(uint32_t format)
 // own sampled header
 constexpr bool formatLoadsWords(uint32_t format)
 {
-    return format == kRgb9e5Float || format == kBgra10XrSrgb || format == kBgr10XrSrgb || format == kRgb10A8XrSrgb;
+    return format == kRgb9e5Float || xrTarget(format);
 }
 
 // Whether the copy engine fills and stores the stand-in (no pack state)
@@ -90,7 +84,14 @@ constexpr bool formatStandInCopied(uint32_t format)
 constexpr bool formatHoldsAlpha(uint32_t format)
 {
     return format == kA1Bgr5Unorm || format == kAbgr4Unorm || format == kBgra4Unorm || format == kArgb8Unorm ||
-           format == kArgb8UnormSrgb || format == kBgra10XrSrgb || format == kRgb10A8XrSrgb;
+           format == kArgb8UnormSrgb || (xrTarget(format) && format <= kBgra10XrSrgb);
+}
+
+// Whether the store state of such an attachment reads its codes (texture 1, a surface's alpha plane texture 2) and keeps
+// those of a loaded pass that no draw changed (buffer 0: a uint, non-zero to keep): an extended-range one's (xr.h)
+constexpr bool formatStoreKeeps(uint32_t format)
+{
+    return formatStandIn(format) && xrTarget(format);
 }
 
 // A state by the sample count of the pass it draws in: one sample's, else the per-sample state of a 2- or 4-sample pass
@@ -106,6 +107,8 @@ constexpr const char *bySamples(uint32_t samples, const char *one, const char *t
 // reads the words as R32Uint and decodes them itself
 constexpr const char *formatLoadState(uint32_t format, uint32_t samples = 1)
 {
+    if (formatStoreKeeps(format))
+        return xrTargetState(format, XrStep::Load, samples);
     switch (format) {
     case kA1Bgr5Unorm:
     case kAbgr4Unorm:
@@ -114,14 +117,6 @@ constexpr const char *formatLoadState(uint32_t format, uint32_t samples = 1)
     case kRgb9e5Float:
         return bySamples(samples, "raw.fmt.fmt_load_rgb9e5_frag", "raw.fmt.fmt_load_rgb9e5_ms2_frag",
                          "raw.fmt.fmt_load_rgb9e5_ms4_frag");
-    case kBgra10XrSrgb:
-        return bySamples(samples, "raw.xr.xr_bgra10_srgb_frag", "raw.xr.xr_bgra10_srgb_ms2_frag",
-                         "raw.xr.xr_bgra10_srgb_ms4_frag");
-    case kBgr10XrSrgb:
-        return bySamples(samples, "raw.xr.xr_bgr10_srgb_frag", "raw.xr.xr_bgr10_srgb_ms2_frag",
-                         "raw.xr.xr_bgr10_srgb_ms4_frag");
-    case kRgb10A8XrSrgb:  // never multisampled (Metal's two-plane formats take no sample count above 1)
-        return samples <= 1 ? "raw.xr.xr_planes_srgb_frag" : nullptr;
     default:
         return nullptr;
     }
@@ -129,6 +124,8 @@ constexpr const char *formatLoadState(uint32_t format, uint32_t samples = 1)
 
 constexpr const char *formatStoreState(uint32_t format, uint32_t samples = 1)
 {
+    if (formatStoreKeeps(format))
+        return xrTargetState(format, XrStep::Store, samples);
     switch (format) {
     case kA1Bgr5Unorm:
         return bySamples(samples, "raw.fmt.fmt_store_a1bgr5_frag", "raw.fmt.fmt_store_a1bgr5_ms2_frag",
@@ -142,29 +139,17 @@ constexpr const char *formatStoreState(uint32_t format, uint32_t samples = 1)
     case kRgb9e5Float:
         return bySamples(samples, "raw.fmt.fmt_store_rgb9e5_frag", "raw.fmt.fmt_store_rgb9e5_ms2_frag",
                          "raw.fmt.fmt_store_rgb9e5_ms4_frag");
-    case kBgra10XrSrgb:
-        return bySamples(samples, "raw.fmt.fmt_store_bgra10_xr_srgb_frag", "raw.fmt.fmt_store_bgra10_xr_srgb_ms2_frag",
-                         "raw.fmt.fmt_store_bgra10_xr_srgb_ms4_frag");
-    case kBgr10XrSrgb:
-        return bySamples(samples, "raw.fmt.fmt_store_bgr10_xr_srgb_frag", "raw.fmt.fmt_store_bgr10_xr_srgb_ms2_frag",
-                         "raw.fmt.fmt_store_bgr10_xr_srgb_ms4_frag");
-    case kRgb10A8XrSrgb:
-        return samples <= 1 ? "raw.fmt.fmt_store_rgb10a8_xr_srgb_frag" : nullptr;
     default:
         return nullptr;
     }
 }
 
-// RGB10A8_2P_XR10_sRGB held in a surface's two planes (Texture::xrPlanes): its load reads both (xr.h xrConversionOf),
-// its store writes the word plane at colour 0 and the alpha plane at colour 1
-constexpr const char *kPlanesSrgbStoreState = "raw.fmt.fmt_store_rgb10a8_xr_srgb_planes_frag";
-
 constexpr uint32_t formatStoreView(uint32_t format)
 {
-    return format == kBgra10XrSrgb    ? 113 /* RGBA16Uint */
-           : format == kRgb10A8XrSrgb ? 103 /* RG32Uint */
-           : formatLoadsWords(format) ? 53  /* R32Uint */
-                                      : 23 /* R16Uint */;
+    return format == 552 || format == kBgra10XrSrgb    ? 113 /* RGBA16Uint */
+           : format == 550 || format == kRgb10A8XrSrgb ? 103 /* RG32Uint */
+           : formatLoadsWords(format)                  ? 53  /* R32Uint */
+                                                       : 23 /* R16Uint */;
 }
 
 // A drawn channel's code (pack/fmt.metal drawnCode): its nearest half, a tie to even, clamped, a NaN 0, then the
@@ -238,15 +223,16 @@ inline uint32_t formatStoredWord(uint32_t format, const float v[4])
 // texture Metal keeps losslessly compressed (fresh.h metalCompresses) clears to the clear's own codes: each code the
 // nearest, a tie up, RGB9E5's mantissas rounded; the stand-in holds their floats. Any other clears as a draw of the clear's
 // colour (probe/fmt/clears.mm: every one of 512 clears by one rule or the other, by usage). R8Unorm_sRGB's clear is the
-// RGBA8Unorm_sRGB stand-in's own. BGR10_XR_sRGB's and BGRA10_XR_sRGB's tiles hold a clear as each channel's nearest half,
-// BGR10_XR_sRGB's alpha 1 (m2v ExtendedRange::clear_tile_value), a draw's route: Metal's straight route (a compressed
-// texture's pass that records no draw) is not told apart here, and stores within one code of it.
+// RGBA8Unorm_sRGB stand-in's own. An extended-range format's tile holds a clear as each channel's nearest half, a format
+// of no alpha's alpha 1: a draw's route. Metal's straight route (a compressed
+// texture's pass that records no draw) clears BGR10_XR's and BGRA10_XR's codes through the clear registers
+// (TegraGM20BMetalRangeForms.mm formatStandIns); the sRGB twins' is not told apart, and stores within one code of it.
 inline void formatStandInClear(uint32_t format, const float in[4], float out[4], bool compressed)
 {
-    if (format == kBgr10XrSrgb || format == kBgra10XrSrgb || format == kRgb10A8XrSrgb) {
+    if (xrTarget(format)) {
         for (int k = 0; k < 4; k++)
             out[k] = float(_Float16(in[k]));
-        if (format == kBgr10XrSrgb)
+        if (!formatHoldsAlpha(format))
             out[3] = 1.0f;
         return;
     }
@@ -310,9 +296,10 @@ class Device;
 Texture *formatStandInFor(Device &d, CommandBuffer &rc, const ColorAttachment &a, uint32_t layers, uint32_t slot,
                           bool fill, const char **why);
 // `a`'s texels from its stand-in after its pass, a layer at a time (a multisampled one by the per-sample store state);
-// `cleared`: the pass drew nothing (xr_pools.h storeXrPlaneRows); false: *why
+// `cleared`: the pass drew nothing (xr_pools.h storeXrPlaneRows); `keep`: the stand-in was filled from the texels, whose
+// store keeps those no draw changed (formatStoreKeeps); false: *why
 bool storeFormatStandIn(Device &d, CommandBuffer &rc, const ColorAttachment &a, uint32_t layers, Texture &standIn,
-                        bool cleared, const char **why);
+                        bool cleared, const char **why, bool keep = false);
 // Levels first + 1 .. last of the selected layers of chain `t` from the level above by the format's mip state; false: *why
 bool formatMipPasses(Device &d, CommandBuffer &rc, Texture &t, uint32_t first, uint32_t last, uint32_t firstLayer,
                      uint32_t layers, uint32_t format, const char **why);

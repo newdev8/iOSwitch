@@ -20,6 +20,7 @@ extern "C" {
 #include "SwitchGpuSpanNotes.h"
 
 extern "C" int proc_selfpid(void);
+extern "C" int switch_gpu_events_charged(void);
 extern "C" void _disable_preemption(void);  // NOLINT(bugprone-reserved-identifier): XNU's own name
 extern "C" void _enable_preemption(void);   // NOLINT(bugprone-reserved-identifier): XNU's own name
 
@@ -35,7 +36,8 @@ const char *const kNames[SWITCH_GPU_PATH_COUNT] = {
 	"wake_asks",      "writer_promises", "promise_waits",   "promise_cpu_releases",
 };
 
-// Every path is taken in the syscall or trap of the process it is for, so each process counts its own: a reader of
+// Every path is taken in the syscall or trap of the process it is for, or on a kernel thread charged to it
+// (switch_gpu_events_charge: VIC's engine thread), so each process counts its own: a reader of
 // kern.switch_gpu_paths sees what its own work took, which the compositor's frames do not move. A process with a slot
 // counts with no lock: each CPU has its own cells, which only that CPU stores to, with preemption off, and readers sum
 // the CPUs. The lock only hands slots out. The least recently counting process gives up its slot, so a count can land in
@@ -260,7 +262,9 @@ extern "C" void switch_gpu_path_taken(enum switch_gpu_path path, uint32_t count)
 {
 	if (!count)
 		return;
-	const int pid = proc_selfpid();
+	int pid = proc_selfpid();
+	if (!pid)
+		pid = switch_gpu_events_charged();
 	Process *p = find(pid);
 	if (!p) {
 		IOLock *held = processLock();

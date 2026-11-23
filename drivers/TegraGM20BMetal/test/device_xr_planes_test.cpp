@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: MIT
 // RGB10A8_2P_XR10 held in a surface's planes (createXrPlaneTexture): over two planes whose rows are off 32 bytes, its
 // header pair reads the planes' pool images; over a plane alone, its alpha a memoryless target whose header, freed with the
-// pair, is over a sparse range of its own (reads 0, stores dropped); turned, a pass into it draws its planes turned; of
-// rows under 16 bytes, read and stored at Metal's two strides.
+// pair, is over a sparse range of its own (reads 0, stores dropped); of rows under 16 bytes, read and stored at Metal's
+// two strides.
 #include "device_views_harness.h"
-#include "../rotated_pass.h"
-#include "../turned_planes.h"
 #include "../xr_pass.h"
 #include "../xr_pools.h"
 #include <cstdlib>
@@ -53,8 +51,8 @@ TEST_F(DeviceViews, PlanesOfRowsOff32AreReadThroughTheirPools)
 }
 
 // Words of rows 64 for 32 texels and alpha bytes of rows 16 for 32 (an M4 Max reads each at its plane's pitch, the rows
-// overlapping, and its passes store each byte from the row overlap_order.h names): both planes read and rendered
-// through pools, the header pair over them
+// overlapping, and its passes store each byte from the row overlap_order.h names): both planes read through pools, the
+// header pair over them
 TEST_F(DeviceViews, PlanesThatOverlapAreHeldThroughPools)
 {
     Surface s;
@@ -69,14 +67,6 @@ TEST_F(DeviceViews, PlanesThatOverlapAreHeldThroughPools)
         const gm20b::Texture &pool = *(k ? t.chroma : t.luma)->sampled;
         EXPECT_EQ(headerAddress(dev.headerWords(t.tic + k)), pool.va & ~uint64_t(511)) << "plane " << k;
     }
-    gm20b::PassDesc p;
-    p.color[0].texture = &t;
-    p.color[0].load = gm20b::ColorAttachment::Clear;
-    p.color[0].store = true;
-    p.count = 1;
-    ASSERT_EQ(gm20b::expandXrPlanes(p, dev), nullptr);
-    EXPECT_EQ(p.color[0].texture, t.luma->sampled) << "the words rendered in their pool";
-    EXPECT_EQ(p.color[1].texture, t.chroma->sampled);
     dev.destroyTexture(t);
 }
 
@@ -135,34 +125,6 @@ TEST_F(DeviceViews, APlaneAlonesAlphaNeedsSparseVa)
     const char *why = "";
     EXPECT_FALSE(dev.createXrPlaneTexture(0, s.base, s.bytes, nullptr, 0, 256, 0, 0, 64, 64, 550, t, &why));
     EXPECT_NE(std::string(why).find("TegraGM20BInfoSparse"), std::string::npos) << why;
-}
-
-TEST_F(DeviceViews, ATurnedTwoPlaneTargetDrawsItsPlanesTurned)
-{
-    Surface s;
-    gm20b::Texture t;
-    const char *why = "";
-    // a plane of 64x32 (rows of 256 and 64 bytes), turned a quarter: a frame of 32x64
-    ASSERT_TRUE(dev.createXrPlaneTexture(0, s.base, s.bytes, nullptr, 0, 256, 32 * 256, 64, 64, 32, 550, t, &why))
-        << why;
-    t.rotation = 1;
-    gm20b::PassDesc p;
-    p.color[0].texture = &t;
-    p.color[0].load = gm20b::ColorAttachment::Clear;
-    p.color[0].store = true;
-    p.count = 1;
-    ASSERT_EQ(gm20b::expandXrPlanes(p, dev), nullptr);
-    gm20b::Texture targets[8];
-    gm20b::turnXrPlaneTargets(t, p, targets);
-    gm20b::Rotation r;
-    ASSERT_EQ(gm20b::passRotation(p, r), gm20b::RotatedRefusal::None);
-    EXPECT_EQ(r.turn, 1);
-    EXPECT_EQ(r.width, 32u);
-    EXPECT_EQ(r.height, 64u);
-    ASSERT_EQ(p.count, 2u);
-    EXPECT_EQ(p.color[0].texture->va, t.luma->va) << "the words drawn straight into plane 0's rows";
-    EXPECT_EQ(p.color[1].texture->format, gm20b::kXrAlphaFormat);
-    dev.destroyTexture(t);
 }
 
 // A plane alone of rows that hold its words keeps no pool: only rows that overlap are read and stored through one

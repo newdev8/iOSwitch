@@ -6,7 +6,8 @@ import Metal
 /// State segments (drivers/TegraGM20BMetal/state_segment.h): a pipeline's registers are written once
 /// into GPU memory at its creation and a bind runs them from there, and a pass that starts with the pipeline the last
 /// pass ended with writes nothing for it. Frames of two passes, each pass an opaque quad, an additive quad over it and
-/// the opaque quad again, so every pass binds A, B, A and starts with the A the pass or frame before ended with.
+/// the opaque quad again, so every pass binds A, B, A and starts with the A the pass or frame before ended with: each
+/// pass but the first skips that bind, or, fused into the pass before it (pass_fusion.h), binds nothing at all.
 /// Additive blending of 8-bit values is exact, so every pixel is checked against its sum. Then the same command buffers
 /// of `switches` alternating binds, in batches bound inline (as before segments) and by segment in turn: the encode
 /// time the facade counted, its pushes and kernel submit time per command buffer, and the GPU time per command buffer
@@ -95,7 +96,11 @@ struct StateSegmentsPathTest: HWTest {
         if wrong != 0 { failures.append("\(wrong) bytes differ from the quads' colours and sums") }
         if binds < 2 * Self.frames { failures.append("\(binds) segment binds for \(Self.frames) frames of A, B, A") }
         if words <= binds { failures.append("the binds replaced \(words) inline words") }
-        if skips < Self.frames && extras == 0 { failures.append("\(skips) binds of the held segment skipped") }
+        let fused = taken("fused_passes"), held = 2 * Self.frames - 1
+        metrics.set("passes_fused", fused)
+        if skips + fused < held && extras == 0 {
+            failures.append("\(skips) binds of the held segment skipped and \(fused) passes fused, of \(held)")
+        }
         return failures.isEmpty
             ? .pass(metrics, proof: gpu.proof) : .fail(failures.joined(separator: "; "), metrics, proof: gpu.proof)
     }

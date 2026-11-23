@@ -103,8 +103,8 @@
     d[@"private_compressed_moves"] = @(gRM->raw->stats.privateCompressedMoves.load());
 #if SWITCH_METAL_DIAGNOSTICS
     d[@"loop_continuations"] = @(gRM->stats.loopContinuations.load());
+    d[@"rings_outgrown"] = @(gRM->raw->stats.ringsOutgrown.load());
 #endif
-    d[@"xr_plane_passes"] = @(gRM->raw->stats.xrPlanePasses.load());
     d[@"xr_plane_shadows"] = @(gRM->raw->stats.xrPlaneShadows.load());
     d[@"xr_pair_binds"] = @(gRM->raw->stats.xrPairBinds.load());
     const gm20b::FetchCounts &fetch = gRM->raw->stats.fetch;
@@ -150,7 +150,9 @@
 // block-linear and depth chunks; wc: its write-combined chunks; heap: the shader heap's host memory (programs copied);
 // heap_in_place: the pack's and the shader compiler's store's pages larger programs run from (file pages, outside the
 // footprint); backings: memoryless attachments' uncompressed backings (trimBackings' last count); grows: allocations that
-// wired a chunk themselves; headers_left: the texture headers not held (8191 at most, gpu.h kTextureHeaders).
+// wired a chunk themselves; headers_left: the texture headers not held (8191 at most, gpu.h kTextureHeaders); textures:
+// the memory live textures took of their own and their kept blocks', which returns to where it was once they go (pool
+// and wc keep a chunk's worth free).
 // hw_test_app's gpu.path.set_survives_trim: the latest resource set registration the kernel refused, its member and why
 - (NSString *)switchMetalSetRefusal
 {
@@ -167,7 +169,8 @@
         @"heap_in_place" : @(d.heapInPlaceBytes()),
         @"backings" : @(d.stats.backingBytes.load()),
         @"grows" : @(d.stats.poolStalls.load()),
-        @"headers_left" : @(d.headersLeft())
+        @"headers_left" : @(d.headersLeft()),
+        @"textures" : @(d.stats.textureBytes.load())
     };
 }
 

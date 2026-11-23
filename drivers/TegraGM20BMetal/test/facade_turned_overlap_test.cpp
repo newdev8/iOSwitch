@@ -70,6 +70,8 @@ id<MTLDevice> xrDevice()
 {
     return open(writePack(packKey(MTLPixelFormatBGRA8Unorm), {}, {}, true, "",
                           {{"raw.xr.xr_two_planes_frag", MTLPixelFormatRGBA16Float},
+                           {gm20b::xrTargetState(550, gm20b::XrStep::Load, 1, true), MTLPixelFormatRGBA16Float},
+                           {gm20b::xrTargetState(550, gm20b::XrStep::Store, 1, true), MTLPixelFormatR32Uint},
                            {gm20b::kOverlapPlanesState, MTLPixelFormatR8Uint}}));
 }
 

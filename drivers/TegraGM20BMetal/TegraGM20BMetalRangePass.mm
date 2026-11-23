@@ -12,7 +12,6 @@
 #include "format_standin.h"
 #include "plain_rows.h"
 #include "planar_target.h"
-#include "turned_planes.h"
 #include "xr_pools.h"
 
 #include <algorithm>
@@ -276,26 +275,12 @@ bool SwitchMetalRangeEncode::beginPass(size_t at)
         gm20bReachFails(cb, ahead_, *why_, loadedReach_.memory, rc->refusal);
         return fail(PredEncPlanarRT, *why_, loadedTargets_, 0, *why_);
     }
-    if (!xrImages(pass, p))
-        return false;
-    if (const char *refusal = gm20b::expandXrPlanes(p, *d_)) {
-        gm20bPassWorkFails(cb, ahead_, refusal, MTLCommandBufferErrorInternal);
-        return fail(PredEncPassRender, refusal);
-    }
     overlappingPlanes(pass, p);
     texelRowsTargets(pass);
-    for (const SwitchMetalPass::Color &a : pass.color)
-        if (__unsafe_unretained SwitchMetalTexture *t = (SwitchMetalTexture *)a.texture)
-            gm20b::turnXrPlaneTargets(t->_raw, p, levelTargets_);
     if (!turned_.begin(*rc, p, draws, why_)) {
         gm20bReachFails(cb, ahead_, *why_, turned_.failedForMemory(), rc->refusal);
         return fail(PredPassRotated, *why_, 0, 0, *why_);
     }
-    if (pass.xrShadows && !gm20bXrShadowFill(rc, pass, p, codes_, why_)) {
-        gm20bPassWorkFails(cb, ahead_, *why_, MTLCommandBufferErrorInternal);
-        return fail(PredEncPassRender, *why_, pass.xrShadows);
-    }
-    cb->_xrShadowCurrent = gm20bXrShadowTwinsOf(cb, uint32_t(c.x));
     p.metalDepth = true;
     // the recording failed every pass Metal's validation stops (TegraGM20BMetalPassErrors.h): render() refuses the rest for
     // want of memory alone

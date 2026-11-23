@@ -38,7 +38,6 @@ class RecordsTest(unittest.TestCase):
             'fetch': True,
             'form': 'barrier',
             'push_metadata': True,
-            'blend_color_word': 5,
             'half_blend_color_word': 29,
         }
         data = packfile.pipeline_bytes(rec, 0, 0)
@@ -55,7 +54,7 @@ class RecordsTest(unittest.TestCase):
         back = directlink.pipeline_of(record, [], ids, [])
         self.assertEqual(packfile.pipeline_bytes(back, 0, 0), data)
         self.assertTrue(back['push_metadata'])
-        self.assertEqual((back['blend_color_word'], back['half_blend_color_word']), (5, 29))
+        self.assertEqual(back['half_blend_color_word'], 29)
         record['pipeline'] = data[:-4]
         with self.assertRaisesRegex(ValueError, 'obsolete layout'):
             directlink.pipeline_of(record, [], ids, [])
@@ -113,7 +112,7 @@ class RecordsTest(unittest.TestCase):
         self.assertEqual((back['array_length_word'], back['viewport_count_word']), (3, 4))
         self.assertEqual(packfile.pipeline_bytes(back, 0, 0), record['pipeline'])
 
-    def test_a_two_plane_record_keeps_its_sampled_slots_and_flags(self):
+    def test_a_record_keeps_its_sampled_two_plane_slots_and_flags(self):
         rec = {
             'key': 'samples=1 c0=550:15:0',
             'vs': 0,
@@ -125,12 +124,11 @@ class RecordsTest(unittest.TestCase):
             'set_size': 0,
             'fetch': False,
             'turn_refused': True,
-            'two_plane': True,
             'xr_slots': 0x8001,
         }
         data = packfile.pipeline_bytes(rec, 0, 0)
         self.assertEqual(data[directlink.V24_AT - 4 : directlink.V24_AT], struct.pack('<HH', 0x8001, 0))
-        self.assertEqual(directlink.PIPELINE.unpack_from(data)[-1] & 0xE0, 0xC0)
+        self.assertEqual(directlink.PIPELINE.unpack_from(data)[-1] & 0xE0, 0x40)
         programs = [{'image': bytes([i]), 'data': b'', 'cbufs': []} for i in range(2)]
         ids = {directlink.program_id(p): i for i, p in enumerate(programs)}
         record = {
@@ -141,7 +139,7 @@ class RecordsTest(unittest.TestCase):
             'probe': {'index': 0, 'form': '', 'targets': 0b11, 'records': [{'regs': {}}]},
         }
         back = directlink.pipeline_of(record, [], ids, [])
-        self.assertEqual((back['turn_refused'], back['two_plane'], back['xr_slots']), (True, True, 0x8001))
+        self.assertEqual((back['turn_refused'], back['xr_slots']), (True, 0x8001))
         self.assertEqual(packfile.pipeline_bytes(back, 0, 0), data)
 
     def test_a_vertex_stream_fetches_at_its_layouts_stride_alone(self):
@@ -399,12 +397,12 @@ class RecordsTest(unittest.TestCase):
     def test_the_report_counts_variant_records_by_form_and_names_each_sampled_two_plane_one(self):
         state = 'samples=1 c0=550:15:0:1:0:0:1:0:0 | v a | f b'
         cubic = ' | cubic s0:0000n t0:550 | xrs=4'
-        names = ['', ' | xrs=2', ' | xrs=2', ' | xr2p | xrs=2', ' | tests=1 | xrs=2', cubic, ' | wtex=1:23']
+        names = ['', ' | xrs=2', ' | xrs=2', ' | tests=1 | xrs=2', cubic, ' | wtex=1:23']
         lines = directlink.variant_report([{'key': state + n} for n in names])
         self.assertEqual(
             lines[0],
-            '6 variant records: 1 of a test class, 1 of cubic samplers, 1 of two-plane passes, '
-            '5 of sampled two-plane textures, 1 of written formats',
+            '5 variant records: 1 of a test class, 1 of cubic samplers, 4 of sampled two-plane textures, '
+            '1 of written formats',
         )
         self.assertEqual(
             lines[1:],
@@ -558,7 +556,7 @@ class RecordsTest(unittest.TestCase):
         for vertex, fragment, name in (
             ('ycbcr_vert', 'ycbcr_load_codes_frag', b'raw.ycbcr.ycbcr_load_codes_frag'),
             ('ycbcr_store_vert', 'ycbcr_store_luma8_masked_frag', b'raw.ycbcr_store.ycbcr_store_luma8_masked_frag'),
-            ('xr_vert', 'xr_tile_bgr10_frag', b'raw.xr.xr_tile_bgr10_frag'),
+            ('xr_vert', 'xr_bgr10_frag', b'raw.xr.xr_bgr10_frag'),
             ('xr_vert', 'xr_planes_merge_frag', b'raw.xr.xr_planes_merge_frag'),
             ('two_plane_cover', 'two_plane_load', b'raw.two_plane.two_plane_load'),
         ):

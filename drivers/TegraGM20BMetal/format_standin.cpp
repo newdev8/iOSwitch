@@ -23,16 +23,24 @@ bool wordsView(Device &d, Texture &t, Texture &view, uint32_t format)
     return view.tic != 0;
 }
 
+// What an extended-range store reads beside its stand-in (format_standin.h formatStoreKeeps): the codes it stores into,
+// at texture 1 (a surface's alpha plane at texture 2), and whether it keeps the texels no draw changed, at buffer 0; its
+// targets loaded where it keeps them, a pool image's copied in
+struct StoreReads {
+    Texture *codes = nullptr, *alphas = nullptr;
+    uint32_t keep = 0;
+};
+
 // One pass of `state` over all of `target` (and `secondTarget` at colour 1), reading `source` at texture 0 (and
 // `secondSource` at texture 1)
 bool drawAll(CommandBuffer &rc, Pipeline *state, Texture &target, Texture &source, const char **why,
-             Texture *secondTarget = nullptr, Texture *secondSource = nullptr)
+             Texture *secondTarget = nullptr, Texture *secondSource = nullptr, const StoreReads *reads = nullptr)
 {
     PassDesc p;
     p.color[0].texture = &target;
     p.color[1].texture = secondTarget;
     for (ColorAttachment &a : p.color) {
-        a.load = ColorAttachment::DontCare;
+        a.load = reads && reads->keep ? ColorAttachment::Load : ColorAttachment::DontCare;
         a.store = true;
     }
     p.count = secondTarget ? 2 : 1;
@@ -43,6 +51,12 @@ bool drawAll(CommandBuffer &rc, Pipeline *state, Texture &target, Texture &sourc
     e->setTexture(0, &source);
     if (secondSource)
         e->setTexture(1, secondSource);
+    if (reads) {
+        e->setTexture(1, reads->codes);
+        if (reads->alphas)
+            e->setTexture(2, reads->alphas);
+        e->setBytes(2, 0, &reads->keep, sizeof reads->keep);
+    }
     e->setViewport(0, 0, target.width, target.height, 0, 1);
     e->setScissor(0, 0, target.width, target.height);
     if (!e->draw(4 /* MTLPrimitiveTypeTriangleStrip */, 0, 4, 1, 0, why))
@@ -148,8 +162,10 @@ Texture *formatStandInFor(Device &d, CommandBuffer &rc, const ColorAttachment &a
 {
     Texture &t = *a.texture;
     const uint32_t format = formatStandIn(t.format);
-    Pipeline *load = d.ownPipeline(t.xrPlanes ? xrConversionOf(t.format, true) : formatLoadState(t.format, t.samples));
-    Pipeline *store = d.ownPipeline(t.xrPlanes ? kPlanesSrgbStoreState : formatStoreState(t.format, t.samples));
+    Pipeline *load = d.ownPipeline(t.xrPlanes ? xrTargetState(t.format, XrStep::Load, 1, true)
+                                              : formatLoadState(t.format, t.samples));
+    Pipeline *store = d.ownPipeline(t.xrPlanes ? xrTargetState(t.format, XrStep::Store, 1, true)
+                                               : formatStoreState(t.format, t.samples));
     if (!format || (!formatStandInCopied(t.format) && !t.memoryless && (!load || !store))) {
         *why = "a target of a format the GM20B renders none of, with no stand-in route (the pack has no load or store "
                "state for it at its sample count)";
@@ -190,7 +206,7 @@ Texture *formatStandInFor(Device &d, CommandBuffer &rc, const ColorAttachment &a
 }
 
 bool storeFormatStandIn(Device &d, CommandBuffer &rc, const ColorAttachment &a, uint32_t layers, Texture &standIn,
-                        bool cleared, const char **why)
+                        bool cleared, const char **why, bool keep)
 {
     Texture &t = *a.texture;
     layers = std::max(layers, 1u);
@@ -208,10 +224,17 @@ bool storeFormatStandIn(Device &d, CommandBuffer &rc, const ColorAttachment &a, 
         const bool pools = xrPlanesOverlap(t);
         Texture &words = pools ? *t.luma->sampled : *t.luma;
         Texture *alpha = pools && t.chroma->sampled ? t.chroma->sampled : t.chroma;
-        return drawAll(rc, d.ownPipeline(kPlanesSrgbStoreState), words, standIn, why, alpha) &&
+        if (!d.sampleable(words) || !d.sampleable(*alpha)) {
+            *why = "no texture header for a stand-in's store";
+            return false;
+        }
+        const StoreReads reads = {&words, alpha, keep};
+        return drawAll(rc, d.ownPipeline(xrTargetState(t.format, XrStep::Store, 1, true)), words, standIn, why, alpha,
+                       nullptr, &reads) &&
                (!pools || !storeXrPlaneRows(d, rc, t, cleared, why));
     }
     Pipeline *store = d.ownPipeline(formatStoreState(t.format, t.samples));
+    const bool reads = formatStoreKeeps(t.format);
     for (uint32_t l = 0; l < layers; l++) {
         // the texture's words as the store state writes them: rendered as they lie where NVK's linear-render rule takes
         // the rows, else through a pool image the pass copies back (Texture::shadowTarget)
@@ -228,7 +251,17 @@ bool storeFormatStandIn(Device &d, CommandBuffer &rc, const ColorAttachment &a, 
             *why = "no texture header for a stand-in's store";
             return false;
         }
-        if (!drawAll(rc, store, words, held, why))
+        // the codes the store keeps, read through a header of their own over the texture's rows
+        Texture codes = layers == 1 ? t : layerOf(t, l);
+        if (reads) {
+            codes.format = formatStoreView(t.format);
+            if (layers == 1 ? !wordsView(d, t, codes, codes.format) : !(codes.tic = layerTic(d, a, codes, l))) {
+                *why = "no texture header for a stand-in's store";
+                return false;
+            }
+        }
+        const StoreReads kept = {&codes, nullptr, keep};
+        if (!drawAll(rc, store, words, held, why, nullptr, nullptr, reads ? &kept : nullptr))
             return false;
     }
     return true;

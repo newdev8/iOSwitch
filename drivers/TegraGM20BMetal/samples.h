@@ -123,8 +123,6 @@ inline const char *resolveState(uint32_t format, uint32_t samples)
         return "raw.resolve.resolve_rgba16_frag";
     case 125:
         return "raw.resolve.resolve_rgba32f_frag";
-    case 552:
-        return "raw.resolve.resolve_bgra10_xr_frag";
     default:
         return nullptr;
     }

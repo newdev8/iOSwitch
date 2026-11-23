@@ -20,6 +20,22 @@ bool Device::createStoredMultisample(uint32_t width, uint32_t height, uint32_t f
     return createLaidOut(ask, t, at);
 }
 
+namespace {
+
+// The layers storedZetaKind weighs for a zeta: a Depth32Float 2D array's as one while HW Test's
+// switchMetalProbeZetaLayers: is on
+uint32_t kindLayers([[maybe_unused]] const Device &d, [[maybe_unused]] uint32_t format, [[maybe_unused]] uint8_t type,
+                    uint32_t layers)
+{
+#if SWITCH_METAL_DIAGNOSTICS
+    if (d.probeZetaLayers.load(std::memory_order_relaxed) && format == 252 && type == fx::kTexTwoDArray)
+        return 1;
+#endif
+    return layers;
+}
+
+}  // namespace
+
 bool Device::createOwnedZeta(uint32_t width, uint32_t height, uint32_t format, uint32_t samples, bool sampled,
                              Texture &t, uint32_t layers, uint8_t type, uint32_t levels)
 {
@@ -29,9 +45,9 @@ bool Device::createOwnedZeta(uint32_t width, uint32_t height, uint32_t format, u
         return false;
     const uint32_t z = zetaFormatIndex(format);
     std::lock_guard<gm20b::Mutex> l(lock_);
-    if (const uint32_t kind =
-            levels == 1 ? storedZetaKind((k_.info().flags & TegraGM20BInfoCompression) != 0, format, samples, layers)
-                        : 0;
+    if (const uint32_t kind = levels == 1 ? storedZetaKind((k_.info().flags & TegraGM20BInfoCompression) != 0, format,
+                                                           samples, kindLayers(*this, format, type, layers))
+                                          : 0;
         kind && createCompressedZeta(bytes, kind, t))
         return true;
     Span span;

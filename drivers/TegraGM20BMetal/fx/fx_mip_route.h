@@ -82,12 +82,16 @@ inline bool mipRoutable(const MipChain &c, bool twod, bool threeD)
     return eachMipRun(c, 0, c.levels - 1, twod, threeD, [](const MipRun &) {});
 }
 
-// emitGenerate of levels first + 1 .. last in the selected layers of the chain at `va`
+// emitGenerate (`point`: emitPointGenerate) of levels first + 1 .. last in the selected layers of the chain at `va`
 inline void emitGenerateLayers(Push &p, const MipChain &c, uint64_t va, uint32_t fmt2d, uint32_t first, uint32_t last,
-                               uint32_t firstLayer, uint32_t layers)
+                               uint32_t firstLayer, uint32_t layers, bool point = false)
 {
-    for (uint32_t layer = firstLayer; layer < firstLayer + layers; layer++)
-        emitGenerate(p, c, va + layer * c.arrayStride, nullptr, fmt2d, first, last);
+    for (uint32_t layer = firstLayer; layer < firstLayer + layers; layer++) {
+        if (point)
+            emitPointGenerate(p, c, va + layer * c.arrayStride, fmt2d, first, last);
+        else
+            emitGenerate(p, c, va + layer * c.arrayStride, nullptr, fmt2d, first, last);
+    }
 }
 
 }  // namespace fx

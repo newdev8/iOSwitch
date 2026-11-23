@@ -31,7 +31,7 @@ struct ColorTargetDesc {
     uint8_t blockDepth = 0;   // log2 planes a block (a 3D image's level)
 };
 
-// Texture `t` (gpu.h, or any type of its fields) of render format `rtFormat` and `rows` rows as a target
+// Texture `t` (resources.h, or any type of its fields) of render format `rtFormat` and `rows` rows as a target
 template <typename Texture> ColorTargetDesc colorTargetDesc(const Texture &t, uint32_t rtFormat, uint32_t rows)
 {
     ColorTargetDesc d;

@@ -12,10 +12,28 @@ pub mod argument_layouts;
 pub mod descriptors;
 #[path = "NativeMetalDirect.rs"]
 pub mod direct;
+#[path = "NativeMetalDirectAbi.rs"]
+pub mod direct_abi;
 #[path = "NativeMetalDirectCompute.rs"]
 pub mod direct_compute;
+#[path = "NativeMetalDirectComputeAbi.rs"]
+pub mod direct_compute_abi;
+#[path = "NativeMetalDirectComputeBinds.rs"]
+mod direct_compute_binds;
+#[path = "NativeMetalDirectComputeWords.rs"]
+mod direct_compute_words;
+#[path = "NativeMetalDirectComputeWrites.rs"]
+mod direct_compute_writes;
+#[path = "NativeMetalDirectDraw.rs"]
+mod direct_draw;
+#[path = "NativeMetalDirectLayout.rs"]
+pub mod direct_layout;
+#[path = "NativeMetalDirectProbe.rs"]
+pub mod direct_probe;
 #[path = "NativeMetalDirectTess.rs"]
 mod direct_tess;
+#[path = "NativeMetalDirectWrites.rs"]
+pub mod direct_writes;
 #[path = "NativeMetalKernelTextures.rs"]
 mod kernel_textures;
 #[path = "NativeMetalOffline.rs"]

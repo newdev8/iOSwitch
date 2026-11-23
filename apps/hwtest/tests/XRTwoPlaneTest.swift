@@ -4,9 +4,9 @@ import HWTestCore
 import HWTestGPU
 import Metal
 
-/// RGB10A8_2P_XR10 (550) over a 'b3a8' surface, as Core Animation's backdrop blur makes it, drawn in its planes
-/// (xr_pass.h: the word into plane 0, the alpha byte into plane 1 as a target of its own): a cleared pass with a
-/// draw, a pass that loads it and draws again, and a pass that samples it; then, each after the CPU rewrote part of
+/// RGB10A8_2P_XR10 (550) over a 'b3a8' surface, as Core Animation's backdrop blur makes it, rendered through its
+/// RGBA16Float stand-in and stored into its planes (the word into plane 0, the alpha byte into plane 1): a cleared pass
+/// with a draw, a pass that loads it and draws again, and a pass that samples it; then, each after the CPU rewrote part of
 /// both planes, a loading pass, a sampling pass and a blit into a buffer; last a blit from a buffer into it. Every
 /// command buffer must take the driver, and the planes must hold Metal's bytes (plane 0 the code word, plane 1 the alpha byte, codes as xr.h writeCode stores
 /// them), the samples each code's value as a half, and blits move plane 0's words alone; rows of
@@ -82,8 +82,6 @@ struct XRTwoPlaneTest: HWTest {
         )
 
         var metrics = Metrics()
-        let planePasses = moved("xr_plane_passes")
-        metrics.set("plane_passes", planePasses)
         metrics.set("plane_shadows", directShadows)
         metrics.set("cell_shadows", cellShadows)
         metrics.set("narrow_wrong", narrow)
@@ -123,15 +121,14 @@ struct XRTwoPlaneTest: HWTest {
                 ("the samples follow a CPU write of the planes", resampled == 0),
                 ("a blit into a buffer gives plane 0's words after a CPU write", copiedOut == 0),
                 ("a blit from a buffer writes plane 0 alone", copiedIn == 0),
-                ("the passes drew in the planes", planePasses > 0),
                 (
                     "rows of 128-byte multiples are drawn in place, beside a memoryless 550 too",
                     directShadows == 0 && cellShadows == 0
                 ),
                 ("a surface 60 wide is drawn through shadows", narrow == 0 && narrowShadows > 0),
                 (
-                    "blended draws are source-over of the codes, within one code",
-                    blend.wrong == 0 && blend.interlocked > 0
+                    "blended draws are source-over of the codes, within one code, blended by the ROP",
+                    blend.wrong == 0 && blend.interlocked == 0
                 ),
                 (
                     "Core Animation's blended fills in the storage form are source-over, within one code",

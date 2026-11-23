@@ -616,7 +616,7 @@ TEST(GM20BKillSource, AKilledChannelLeavesItsConnectionWorking)
 TEST(GM20BRawReopenSource, ReopenKeepsTheHeapAndReplaysTheContext)
 {
 	const std::string raw = SourceText("../../TegraGM20BMetal/gpu.cpp");
-	const std::string channel = SourceText("../../TegraGM20BMetal/command_buffer.cpp");
+	const std::string channel = SourceText("../../TegraGM20BMetal/device_channel.cpp");
 	// channel_recovery.h makeChannel makes the channel, then runs newContext on it
 	const CodeText reopen =
 		Block(channel, "bool Device::reopen()") +
@@ -657,7 +657,8 @@ TEST(GM20BRawReopenSource, ReopenKeepsTheHeapAndReplaysTheContext)
 	EXPECT_TRUE(Block(SourceText("../../TegraGM20BMetal/multisample.h"),
 			  "inline void sampleLayoutMethods(")
 			    .has("p.inc(NVB197_SET_CONSTANT_BUFFER_SELECTOR_A,"));
-	const CodeText begin = Block(channel, "CommandBuffer *Device::begin()");
+	const CodeText begin = Block(SourceText("../../TegraGM20BMetal/command_buffer.cpp"),
+				     "CommandBuffer *Device::begin()");
 	EXPECT_TRUE(begin.before("!reopen())", "p.m(INVALIDATE_SHADER_CACHES_NO_WFI,"));
 }
 

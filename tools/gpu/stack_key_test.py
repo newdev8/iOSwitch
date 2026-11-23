@@ -8,6 +8,7 @@ import re
 import shutil
 import tempfile
 import unittest
+from collections.abc import Callable
 from pathlib import Path
 
 from tools.gpu import stack_key
@@ -51,6 +52,23 @@ KEYED = [
     Path('drivers/TegraGM20BMetal/translate/NativeMetalTranslate.rs'),
     Path('third_party/m2v/crates/metal2vulkan/src/lib.rs'),
 ]
+
+
+# A token edit and a comment, by the language a file is read as
+DECLARATION = {
+    '.h': b'\nint edited;\n',
+    '.cpp': b'\nint edited;\n',
+    '.mm': b'\nint edited;\n',
+    '.rs': b'\nconst EDITED: u8 = 0;\n',
+    '.py': b'\nedited = 1\n',
+}
+COMMENT = {
+    '.h': b'// edited\n',
+    '.cpp': b'/* edited */\n',
+    '.mm': b'// edited\n',
+    '.rs': b'/* /* edited */ */\n',
+    '.py': b'# edited\n',
+}
 
 
 def hashed() -> set[str]:
@@ -119,6 +137,59 @@ class Inputs(unittest.TestCase):
                     self.assertIn(str(path), keyed)
 
 
+class Canonical(unittest.TestCase):
+    def same(self, name: str, a: str, b: str) -> bool:
+        return stack_key.canonical(name, a.encode()) == stack_key.canonical(name, b.encode())
+
+    def test_c_comments_and_runs_of_layout_go_and_every_gap_stays(self):
+        self.assertTrue(
+            self.same(
+                'a.h',
+                'int  f(int x,\n      int y) {\n    return x + y; // sum\n}',
+                'int f(int x, int y) { return x + y; }',
+            )
+        )
+        self.assertTrue(self.same('a.mm', 'x = 1; /* one\ntwo */', 'x = 1;'))
+        self.assertFalse(self.same('a.cpp', 'a - -b;', 'a--b;'))
+        self.assertFalse(self.same('a.cpp', 'f<g<int> > x;', 'f<g<int>> x;'))
+        self.assertFalse(self.same('a.h', 'int x;', 'int y;'))
+
+    def test_the_preprocessors_layout_keys_apart(self):
+        self.assertFalse(self.same('a.h', '#define A (x)\n', '#define A(x)\n'))
+        self.assertFalse(
+            self.same('a.h', '#define S(x) #x\nconst char *s = S(a+b);', '#define S(x) #x\nconst char *s = S(a + b);')
+        )
+        self.assertFalse(self.same('a.h', '#include <a/b.h>\n', '#include <a / b.h>\n'))
+        self.assertFalse(self.same('a.h', 'double d = 1e+2;', 'double d = 1e +2;'))
+        self.assertFalse(self.same('a.h', 'int x = 1 .x;', 'int x = 1.x;'))
+
+    def test_a_c_directive_ends_at_its_line_and_a_literal_is_kept_whole(self):
+        self.assertFalse(self.same('a.h', '#define A 1\nint x;', '#define A 1 int x;'))
+        self.assertTrue(self.same('a.h', '#define F(x) \\\n    (x)\nint y;', '#define F(x) (x)\nint y;'))
+        self.assertFalse(self.same('a.h', 's = "a // b";', 's = "a";'))
+        self.assertFalse(self.same('a.cpp', 'r = R"(a /* b */)";', 'r = R"(a)";'))
+        self.assertTrue(self.same('a.h', "#error don't\nint x; // y", "#error don't\nint x;"))
+
+    def test_rust_comments_nest_and_raw_strings_and_lifetimes_are_tokens(self):
+        self.assertTrue(self.same('a.rs', '/* a /* b */ c */ fn f() {}', 'fn f(){}'))
+        self.assertFalse(self.same('a.rs', 'let s = r#"a // "b" c"#;', 'let s = r#"a"#;'))
+        self.assertTrue(
+            self.same('a.rs', "fn f<'a>(s: &'a str) -> char { '/' } // c", "fn f<'a>(s: &'a str) -> char {'/'}")
+        )
+
+    def test_a_rust_doc_comment_is_an_attribute_and_stays(self):
+        self.assertFalse(self.same('a.rs', '/// one\nfn f() {}', '/// two\nfn f() {}'))
+        self.assertFalse(self.same('a.rs', '/** one */ fn f() {}', 'fn f() {}'))
+        self.assertTrue(self.same('a.rs', '//// note\n/**/ fn f() {}', 'fn f() {}'))
+
+    def test_python_is_its_syntax_tree(self):
+        self.assertTrue(self.same('a.py', "x = ['a',  'b']  # c\n", 'x = [\n    "a",\n    "b",\n]\n'))
+        self.assertFalse(self.same('a.py', 'x = 1\n', 'x = 2\n'))
+
+    def test_other_files_are_their_bytes(self):
+        self.assertFalse(self.same('a.json', '{"a": 1}', '{"a":1}'))
+
+
 class Key(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp())
@@ -132,11 +203,11 @@ class Key(unittest.TestCase):
         """Give the copy's key over the hashed paths this test has (not the stage compile or crates.io's)."""
         return stack_key.key(ipsw, {name: self.root / name for name in hashed() if (self.root / name).is_file()})
 
-    def edited(self, path: Path) -> str:
-        """Give the copy's key with `path` edited, then put `path` back."""
+    def edited(self, path: Path, edit: Callable[[bytes], bytes] | None = None) -> str:
+        """Give the copy's key with `path` edited (by default a declaration added), then put `path` back."""
         target = self.root / path
         original = target.read_bytes()
-        target.write_bytes(original + b'\n// edited\n')
+        target.write_bytes(edit(original) if edit else original + DECLARATION.get(path.suffix, b'\nedited\n'))
         try:
             return self.key()
         finally:
@@ -154,6 +225,14 @@ class Key(unittest.TestCase):
             if (self.root / path).is_file():
                 with self.subTest(path=path.name):
                     self.assertNotEqual(self.edited(path), before)
+
+    def test_a_comment_or_a_reformat_of_a_record_maker_keeps_the_key(self):
+        before = self.key()
+        for path in KEYED:
+            if path.suffix in COMMENT and (self.root / path).is_file():
+                comment = COMMENT[path.suffix]
+                with self.subTest(path=path.name):
+                    self.assertEqual(self.edited(path, lambda data, c=comment: b'\n\n' + data + c), before)
 
     def test_each_ios_has_its_own_key(self):
         self.assertNotEqual(self.key('one build'), self.key('another build'))

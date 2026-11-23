@@ -2,9 +2,8 @@
 //! assemblers (`llvm-as`, `xcrun metal-as`, `spirv-as`), the committed fixture directories, a
 //! synthetic metallib writer ([`metallib`]), a tool's identity, the MoltenVK toolchain the MSL
 //! checks reproduce, and the generated-program fuzzers ([`fuzz`]) the product's CPU-interpreter
-//! tests and validation's device tests both run, the extended-range blend and bicubic tables both
-//! check ([`xr_blends`], [`xr_bicubic`]), and the store-buffering litmus kernel both compile
-//! ([`litmus`]).
+//! tests and validation's device tests both run, the extended-range bicubic table both check
+//! ([`xr_bicubic`]), and the store-buffering litmus kernel both compile ([`litmus`]).
 //!
 //! The product runs no external tool and takes this crate for its tests alone: it is the
 //! product's path-only dev-dependency, which `cargo publish` drops, and a dependency of
@@ -25,7 +24,6 @@ pub mod metallib;
 pub mod spirv;
 pub mod tools;
 pub mod xr_bicubic;
-pub mod xr_blends;
 
 /// The validation crate's `fixtures/public` beside this crate
 /// (`crates/metal2vulkan-validation/fixtures/public`, read-only).
@@ -47,6 +45,13 @@ pub fn fixtures_dir() -> PathBuf {
 /// [`fixtures_dir`]'s `engine` (read-only; the engine's own fixtures).
 pub fn engine_dir() -> PathBuf {
     fixtures_dir().join("engine")
+}
+
+/// FNV-1a 64 of `bytes`.
+pub fn fnv(bytes: &[u8]) -> u64 {
+    bytes.iter().fold(0xCBF2_9CE4_8422_2325, |h, &b| {
+        (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01B3)
+    })
 }
 
 /// Why an external tool could not assemble a fixture or compile a module.

@@ -277,21 +277,135 @@ TEST_F(FacadeMipmaps, GenerateMipmapsOfWordFormatsDrawsTheirWords)
     }
 }
 
-// Metal's validation stops generateMipmapsForTexture: of an integer format: nothing is recorded, the command buffer
-// completes on raw
-TEST_F(FacadeMipmaps, GenerateMipmapsOfAnIntegerFormatRecordsNothing)
+// An integer format's levels as an M4 Max makes them (validation off, every integer format, 2D, arrays and cubes): texel
+// (x, y) of each level the level above's (2x + 1, 2y + 1), clamped to its last, every bit kept (words that are float
+// denormals and NaNs among them), by the 2D engine's point steps: texels of 1 to 16 bytes, an axis of one texel, a
+// layer of an array
+TEST_F(FacadeMipmaps, GenerateMipmapsOfAnIntegerFormatTakesTheOddTexelOfTheLevelAbove)
 {
-    auto t = texture(MTLPixelFormatRGBA8Uint);
+    struct Case {
+        MTLPixelFormat format;
+        uint32_t bpp, width, height, layers;
+    };
+
+    for (const Case &c : {Case{MTLPixelFormatRGBA8Uint, 4, 63, 61, 1}, Case{MTLPixelFormatR8Uint, 1, 37, 5, 1},
+                          Case{MTLPixelFormatRG8Sint, 2, 64, 1, 1}, Case{MTLPixelFormatRGBA16Uint, 8, 45, 30, 1},
+                          Case{MTLPixelFormatRGBA32Uint, 16, 33, 17, 1}, Case{MTLPixelFormatRGBA8Uint, 4, 33, 20, 2}}) {
+        SCOPED_TRACE(testing::Message() << c.format << " " << c.width << "x" << c.height << " layers " << c.layers);
+        auto *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:c.format
+                                                                     width:c.width
+                                                                    height:c.height
+                                                                 mipmapped:YES];
+        d.textureType = c.layers > 1 ? MTLTextureType2DArray : MTLTextureType2D;
+        d.arrayLength = c.layers;
+        d.storageMode = MTLStorageModePrivate;
+        d.usage = MTLTextureUsageShaderRead | MTLTextureUsageRenderTarget;
+        auto t = [device newTextureWithDescriptor:d];
+        ASSERT_NE(t, nil);
+        ASSERT_TRUE(((SwitchMetalTexture *)t)->_gm20bOk);
+        const uint32_t levels = uint32_t(t.mipmapLevelCount);
+        std::vector<uint64_t> at;
+        uint64_t bytes = 0;
+        for (uint32_t layer = 0; layer < c.layers; ++layer)
+            for (uint32_t level = 0; level < levels; ++level) {
+                at.push_back(bytes);
+                bytes += uint64_t(std::max(1u, c.width >> level)) * std::max(1u, c.height >> level) * c.bpp;
+            }
+        auto in = [device newBufferWithLength:bytes options:MTLResourceStorageModeShared];
+        auto out = [device newBufferWithLength:bytes options:MTLResourceStorageModeShared];
+        auto *source = static_cast<uint8_t *>(in.contents);
+        memset(source, 0x22, bytes);
+        for (uint32_t layer = 0; layer < c.layers; ++layer)
+            for (uint64_t i = 0; i < uint64_t(c.width) * c.height * c.bpp; i += 4) {
+                const uint32_t k = uint32_t(i / 4) + 977 * layer;
+                const uint32_t word = k % 3 == 0   ? k + 1
+                                      : k % 3 == 1 ? 0x7f800001u + k
+                                                   : 0x80000000u | (k * 2654435761u >> 9);
+                for (uint32_t b = 0; b < 4 && i + b < uint64_t(c.width) * c.height * c.bpp; ++b)
+                    source[at[layer * levels] + i + b] = uint8_t(word >> (8 * b));
+            }
+        auto cb = [[device newCommandQueue] commandBuffer];
+        auto e = [cb blitCommandEncoder];
+        const auto each = [&](auto &&copy) {
+            for (uint32_t layer = 0; layer < c.layers; ++layer)
+                for (uint32_t level = 0; level < levels; ++level) {
+                    const uint32_t w = std::max(1u, c.width >> level), h = std::max(1u, c.height >> level);
+                    copy(layer, level, w, h, at[layer * levels + level]);
+                }
+        };
+        each([&](uint32_t layer, uint32_t level, uint32_t w, uint32_t h, uint64_t offset) {
+            [e copyFromBuffer:in
+                       sourceOffset:offset
+                  sourceBytesPerRow:w * c.bpp
+                sourceBytesPerImage:w * h * c.bpp
+                         sourceSize:MTLSizeMake(w, h, 1)
+                          toTexture:t
+                   destinationSlice:layer
+                   destinationLevel:level
+                  destinationOrigin:MTLOriginMake(0, 0, 0)];
+        });
+        [e generateMipmapsForTexture:t];
+        each([&](uint32_t layer, uint32_t level, uint32_t w, uint32_t h, uint64_t offset) {
+            [e copyFromTexture:t
+                             sourceSlice:layer
+                             sourceLevel:level
+                            sourceOrigin:MTLOriginMake(0, 0, 0)
+                              sourceSize:MTLSizeMake(w, h, 1)
+                                toBuffer:out
+                       destinationOffset:offset
+                  destinationBytesPerRow:w * c.bpp
+                destinationBytesPerImage:w * h * c.bpp];
+        });
+        [e endEncoding];
+        EXPECT_EQ(((SwitchMetalCommandBuffer *)cb)->_pred0, 0u);
+        execute(cb, (levels - 1) * c.layers);
+        const auto *got = static_cast<const uint8_t *>(out.contents);
+        for (uint32_t layer = 0; layer < c.layers; ++layer) {
+            std::vector<uint8_t> above(source + at[layer * levels],
+                                       source + at[layer * levels] + c.width * c.height * c.bpp);
+            uint32_t aw = c.width, ah = c.height;
+            for (uint32_t level = 1; level < levels; ++level) {
+                const uint32_t w = std::max(1u, c.width >> level), h = std::max(1u, c.height >> level);
+                std::vector<uint8_t> want(uint64_t(w) * h * c.bpp);
+                for (uint32_t y = 0; y < h; ++y)
+                    for (uint32_t x = 0; x < w; ++x)
+                        memcpy(
+                            &want[(uint64_t(y) * w + x) * c.bpp],
+                            &above[(uint64_t(std::min(2 * y + 1, ah - 1)) * aw + std::min(2 * x + 1, aw - 1)) * c.bpp],
+                            c.bpp);
+                EXPECT_EQ(memcmp(got + at[layer * levels + level], want.data(), want.size()), 0)
+                    << "layer " << layer << " level " << level;
+                above = want;
+                aw = w, ah = h;
+            }
+        }
+    }
+}
+
+// A 3D texture of an integer format: the 2D engine moves one plane, so no engine of the device takes a level's planes
+// from the level above's: the command buffer fails Internal, nothing is submitted
+TEST_F(FacadeMipmaps, GenerateMipmapsOfAThreeDIntegerTextureFailsInternally)
+{
+    auto *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Uint
+                                                                 width:9
+                                                                height:6
+                                                             mipmapped:YES];
+    d.textureType = MTLTextureType3D;
+    d.depth = 5;
+    d.storageMode = MTLStorageModePrivate;
+    d.usage = MTLTextureUsageShaderRead;
+    auto t = [device newTextureWithDescriptor:d];
     ASSERT_NE(t, nil);
-    ASSERT_TRUE(((SwitchMetalTexture *)t)->_gm20bOk);
+    const size_t jobs = kernel_model::model.jobs.size();
     auto cb = [[device newCommandQueue] commandBuffer];
     auto e = [cb blitCommandEncoder];
-    const size_t recorded = ((SwitchMetalCommandBuffer *)cb)->_plan.size();
     [e generateMipmapsForTexture:t];
-    EXPECT_EQ(((SwitchMetalCommandBuffer *)cb)->_plan.size(), recorded);
     [e endEncoding];
-    EXPECT_EQ(((SwitchMetalCommandBuffer *)cb)->_pred0, 0u);
-    execute(cb, 0, true);
+    [cb commit];
+    [cb waitUntilCompleted];
+    EXPECT_EQ(cb.status, MTLCommandBufferStatusError);
+    EXPECT_EQ(cb.error.code, MTLCommandBufferErrorInternal);
+    EXPECT_EQ(kernel_model::model.jobs.size(), jobs);
 }
 
 // A chain whose word mip state the device's pack lacks (a stale pack) fails its command buffer, no m2v asked

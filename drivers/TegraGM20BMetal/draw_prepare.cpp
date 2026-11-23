@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: MIT
-// See gpu.h (RenderEncoder::prepare: a draw's state, set 0 and barriers).
+// See render_encoder.h (RenderEncoder::prepare: a draw's state, set 0 and barriers).
 #include "lock.h"
 #include "nonfinite.h"
 #include "clear_box.h"
 #include "icb.h"
 #include "dynamic_push.h"
-#include "blend_color.h"
 #include "bound_texture.h"
 #include "gpu.h"
 #include "layers.h"
@@ -161,8 +160,8 @@ __attribute__((always_inline)) inline bool RenderEncoder::writeSetEntry(Pipeline
             cb_->useAddress(b.va, b.size, bufferStorage(e));
         // A slot whose record names no residual word is one its programs read through the root table's address, never
         // its descriptor: the translation gives each slot it reads through a view its SlotBindOffset residual
-        // (translate/NativeMetalDirect.rs residual_words; a slot read by address has none), and every record is the
-        // direct compile's, which places them. That descriptor takes the base aligned down.
+        // (translate/NativeMetalDirectWrites.rs residual_words; a slot read by address has none), and every record is
+        // the direct compile's, which places them. That descriptor takes the base aligned down.
         BufferDescriptor desc;
         if (!bufferDescriptor(e, b.va, b.size, desc))
             desc.residual = 0;
@@ -287,15 +286,6 @@ __attribute__((always_inline)) inline bool RenderEncoder::writeSetEntry(Pipeline
                 return false;
             }
         }
-    } else if (e.kind == EntryXrShadow) {
-        const Texture *shadow = pass_.xrShadow[e.slot];
-        if (!shadow || !shadow->tic) {
-            *why = "an extended-range shadow's variant drawn in a pass that holds no shadow of the colour";
-            cb_->refusal = {RefXrShadow, e.slot, 0, 0};
-            return false;
-        }
-        cb_->use(*shadow, true);
-        tic = shadow->tic;
     } else if (e.kind == EntryTexture3d) {
         // a texture of another type there is no binding of the argument: m2v writes its neutral, raw an empty handle
         const Texture *bound = boundTexture(e);
@@ -585,7 +575,8 @@ bool RenderEncoder::prepare(Pipeline *pl, uint32_t primitive, int32_t first, uin
                 for (uint32_t i = 0; i < entries.size(); i++)
                     if ((moved >> i & 1) && !writeSetEntry(pl, entries[i], set, prepared, why))
                         return false;
-                return fillSpills(*pl, moved, false, prepared, set, why);
+                fillSpills(*pl, moved, false, prepared, set);
+                return true;
             },
             [&](const DescriptorWords &words) {
                 return upload(words.data());
@@ -603,7 +594,8 @@ bool RenderEncoder::prepare(Pipeline *pl, uint32_t primitive, int32_t first, uin
                 for (uint32_t i = 0; i < entries.size(); i++)
                     if (!writeSetEntry(pl, entries[i], set, prepared, why))
                         return false;
-                return fillSpills(*pl, 0, true, prepared, set, why);
+                fillSpills(*pl, 0, true, prepared, set);
+                return true;
             },
             [&](const std::vector<uint32_t> &words) {
                 return upload(words.data());
@@ -623,7 +615,7 @@ bool RenderEncoder::prepare(Pipeline *pl, uint32_t primitive, int32_t first, uin
     SWITCH_METAL_ENCODE_BEGIN(bindSpan, Bind);
     const Raster raster = rasterFor(primitive);
     writeRaster(p, raster);
-    const bool dynamicBlend = r.blendColorWord || r.halfBlendColorWord;
+    const bool dynamicBlend = r.halfBlendColorWord;
     const bool slotRoots = r.rootSlots[0] || r.rootSlots[1];
     const bool patches = tessellates(r);
     const bool drawnWordsDirty = ((r.amplificationIdWord || r.amplificationCountWord || r.amplificationLayerWord ||
@@ -672,9 +664,7 @@ bool RenderEncoder::prepare(Pipeline *pl, uint32_t primitive, int32_t first, uin
         drawnWords(*pl, want);
         for (uint32_t m = residualMask; m; m &= m - 1)
             want[__builtin_ctz(m)] = residuals[__builtin_ctz(m)];
-        if (!blendWords(r, why))
-            return false;
-        patchBlendPush(r, blendColor_, blendWords_, want);
+        patchBlendPush(r, blendColor_, want);
         patchShaderTestPush(r.shaderTests, ds_, stencilRef_, depthRange_, false, want);
         for (uint32_t k = 0; k < 2; k++)
             if (const uint8_t word = r.rootTableWord[k]; r.rootSlots[k] && word && word <= 31) {

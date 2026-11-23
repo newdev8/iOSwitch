@@ -19,13 +19,12 @@ constexpr uint32_t kRenderArgumentsA13 =
     2 * (kStageBufferArguments + kStageTextureArgumentsA13 + kStageSamplerArguments);
 static_assert(kRenderArgumentsA10X == 156 && kRenderArgumentsA13 == 350);
 // The entries the driver binds of its own: the sRGB colour table, each stage's texture and sampler handle tables and
-// argument table, the tessellation buffers, the depth and stencil stand-ins, and each colour's fetch and extended-range
-// shadow
+// argument table, the tessellation buffers, the depth and stencil stand-ins, and each colour's fetch
 constexpr uint32_t kColorTableEntries = 1, kHandleTableEntries = 2 * 2, kArgumentTableEntries = 2;
 constexpr uint32_t kStandInEntries = 2, kColorEntries = 8;
 constexpr uint32_t kSyntheticEntries = kColorTableEntries + kHandleTableEntries + kArgumentTableEntries +
-                                       TessBufferCount + kStandInEntries + kColorEntries + kColorEntries;
-static_assert(kSyntheticEntries == 28);
+                                       TessBufferCount + kStandInEntries + kColorEntries;
+static_assert(kSyntheticEntries == 20);
 // The entries a record holds at most: every argument of the widest identity's render pipeline and every synthetic entry
 constexpr uint32_t kSetEntriesMax = kRenderArgumentsA13 + kSyntheticEntries;
 
@@ -153,7 +152,7 @@ inline const char *entriesRefusal(const PackPipeline &p, const uint32_t *far, ui
     const uint32_t words = setWords(p.setBytes);
     for (uint32_t k = 0; k < entries.size(); k++) {
         const PackEntry &e = entries[k];
-        if (e.kind > EntryXrShadow)
+        if (e.kind > EntryTessBuffer)
             return "an entry of a kind no draw writes";
         if (e.offset / 4 + entryWords(e.kind) > words)
             return "an entry past its record's set";
@@ -163,7 +162,7 @@ inline const char *entriesRefusal(const PackPipeline &p, const uint32_t *far, ui
             return "a buffer entry past its stage's buffers";
         if (e.kind == EntryTessBuffer && e.slot >= TessBufferCount)
             return "a tessellation buffer entry past the three";
-        if ((e.kind == EntryFetch || e.kind == EntryXrShadow) && e.slot >= 8)
+        if (e.kind == EntryFetch && e.slot >= 8)
             return "a colour entry past the pass's eight";
         if (e.kind == EntryUbo)
             continue;

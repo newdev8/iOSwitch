@@ -62,6 +62,17 @@ void answers()
     EXPECT_FALSE([device supportsVertexAmplificationCount:SWITCH_GM20B_AMP_MAX + 1]);
     if (!kA13)
         EXPECT_EQ(flag(device, "supportsLayeredRendering"), 1u);
+    unsigned own = 0;
+    Method *methods = class_copyMethodList(object_getClass(device), &own);
+    for (const char *pointers :
+         {"supportsFunctionPointers", "supportsFunctionPointersFromRender", "supportsFunctionPointersFromMesh"}) {
+        bool answered = false;
+        for (unsigned i = 0; i < own; i++)
+            answered |= method_getName(methods[i]) == sel_registerName(pointers);
+        EXPECT_TRUE(answered) << pointers << ": the device's own answer, not _MTLDevice's";
+        EXPECT_EQ(flag(device, pointers), 0u) << pointers << ": no visible function tables";
+    }
+    free(methods);
 }
 
 // A state of eight amplifications is made; one past the amplify macro's mapping words is refused at creation

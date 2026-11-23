@@ -106,8 +106,10 @@ static id<MTLLibrary> compiled(id device, uint32_t type, const std::string &requ
     os_log(gm20bLog(), "SwitchMetal: %{public}s: %{public}s made by the shader compiler in %llu ms", getprogname(),
            what, (unsigned long long)((clock_gettime_nsec_np(CLOCK_UPTIME_RAW) - began) / 1000000));
 #endif
+    // A library made with warnings has no error, as Metal answers one (an M4 Max, sync and completion handler alike): a
+    // CompileWarning error would throw from Swift's async makeLibrary
     if (error)
-        *error = made.warnings.empty() ? nil : libraryError(MTLLibraryErrorCompileWarning, made.warnings);
+        *error = nil;
     return (id<MTLLibrary>)library;
 }
 

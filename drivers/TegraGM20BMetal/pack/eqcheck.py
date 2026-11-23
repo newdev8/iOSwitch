@@ -279,7 +279,7 @@ ELIDED = 'ELIDED'
 
 
 # A draw that reads a constant buffer over bytes the copy engine wrote after its channel's last constant-cache
-# invalidate (nvdec.cpp): wrong on either side
+# invalidate (nvdec_draw.cpp): wrong on either side
 CBSTALE = 'CBSTALE'
 # What the driver must cover of NVK's barriers before a draw. CBINV: NVK invalidates the constant cache as it opens
 # each submission and each of m2v's encoders (a primary command buffer of its own), and where a uniform read follows a

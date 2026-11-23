@@ -26,14 +26,13 @@ struct CompressionSettledTest: HWTest {
         }
         let before = GM20BFacade.compression(of: gpu.device)
         guard !before.isEmpty else { return .skip(GM20BFacade.missing("switchMetalCompression", on: gpu.device)) }
-        let call = unsafeBitCast(facade.method(for: CompressionSettled.selector), to: CompressionSettled.Call.self)
         let make = { try gpu.texture(.bgra8Unorm, Self.width, Self.height) }
         let first = try make()
         let firstComptags = CompressionSettled.comptags(gpu.device, first) ?? -1
         let calls = CallCount()
         let waiter = Waiter<Double>()
         let start = CFAbsoluteTimeGetCurrent()
-        let refusal = call(facade, CompressionSettled.selector) {
+        let refusal = CompressionSettled.ask(facade) {
             calls.add()
             waiter.resume((CFAbsoluteTimeGetCurrent() - start) * 1000)
         }
@@ -42,7 +41,7 @@ struct CompressionSettledTest: HWTest {
         let second = try make()
         let comptags = CompressionSettled.comptags(gpu.device, second) ?? -1
         let idle = CallCount()
-        _ = call(facade, CompressionSettled.selector) { idle.add() }
+        _ = CompressionSettled.ask(facade) { idle.add() }
         let idleSync = idle.count == 1
         let after = GM20BFacade.compression(of: gpu.device)
         var metrics = Metrics()

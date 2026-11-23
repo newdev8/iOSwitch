@@ -90,19 +90,15 @@ static SwitchMetalPlanError joinEndedEncoders(SwitchMetalCommandBuffer *cb, gm20
     SwitchMetalPlanError error = SwitchMetalPlanError::None;
     const char *blocked = nullptr;
     forEachLateRun(commands, [&](size_t encoder, size_t from, size_t to) {
-        bool draws = false;
         for (size_t at = from; at < to; ++at) {
             const Op op = commands.operation(at).op;
             if (encoder == SIZE_MAX || !recordedBy(commands.operation(encoder).op, op)) {
                 error = SwitchMetalPlanError::CommandAfterOtherWork;
                 return false;
             }
-            draws |= isPlanDraw(op);
         }
         if (ahead && ahead >= encoder)
             blocked = "the encode ahead of its commit may have read that encoder's end";
-        else if (draws && cb->_passes.own(commands.begin(encoder).pass).xrShadows)
-            blocked = "its pass holds extended-range shadows, asked for the draws recorded before its end";
         if (blocked) {
             error = SwitchMetalPlanError::CommandAfterEnd;
             return false;

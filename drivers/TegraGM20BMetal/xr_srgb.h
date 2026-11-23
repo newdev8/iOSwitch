@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // BGR10_XR_sRGB's (555), BGRA10_XR_sRGB's (553) and RGB10A8_2P_XR10_sRGB's (551) colour codes as Metal reads and writes them,
 // through its own sRGB tables (pack/xr_srgb_decode.h, pack/xr_srgb_encode.h): what pack/xr.metal's sRGB conversions draw
-// into a texture's stand-in, and what pack/fmt.metal's store states store from a target's (format_standin.h).
+// into a texture's stand-in, and what pack/xr_target.metal's store states store from a target's (format_standin.h).
 #pragma once
 #include <algorithm>
 #include <cmath>
@@ -49,8 +49,8 @@ inline uint32_t bgr10XrSrgbWord(const float v[4])
     return 0xC0000000u | bgr10XrSrgbCode(v[0]) << 20 | bgr10XrSrgbCode(v[1]) << 10 | bgr10XrSrgbCode(v[2]);
 }
 
-// BGRA10_XR_sRGB's (553) fields pack/fmt.metal fmt_store_bgra10_xr_srgb_frag writes for a stand-in texel `v`, blue first,
-// each code in its field's top 10 bits: blue, green and red through the tables above, alpha as BGRA10_XR's
+// BGRA10_XR_sRGB's (553) fields pack/xr_target.metal's store state writes for a stand-in texel `v`, blue first, each code
+// in its field's top 10 bits: blue, green and red through the tables above, alpha as BGRA10_XR's
 inline void bgra10XrSrgbFields(const float v[4], uint16_t out[4])
 {
     out[0] = uint16_t(bgr10XrSrgbCode(v[2]) << 6);
@@ -59,7 +59,7 @@ inline void bgra10XrSrgbFields(const float v[4], uint16_t out[4])
     out[3] = uint16_t(xr_detail::writeCode(XrForm::Bgra10, v[3], true) << 6);
 }
 
-// RGB10A8_2P_XR10_sRGB's (551) texel pack/fmt.metal's store states write for a stand-in texel `v`: the colour word through
+// RGB10A8_2P_XR10_sRGB's (551) texel pack/xr_target.metal's store states write for a stand-in texel `v`: the colour word through
 // the tables above, bits 30 and 31 clear (RGB10A8_2P_XR10's), and the alpha byte as RGB10A8_2P_XR10's write stores it
 inline void rgb10a8XrSrgbTexel(const float v[4], uint32_t out[2])
 {

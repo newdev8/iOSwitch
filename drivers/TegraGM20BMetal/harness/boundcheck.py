@@ -73,11 +73,11 @@ def flat(key: tuple) -> list[int]:
 
 def dynamic_words(p: bytes) -> set[int]:
     """Give the record words (0-31 root, 32 on the fragment table's) the driver writes from a draw's own state."""
-    blend, half, _ = struct.unpack_from('<BBH', p, TAIL - 56)
+    half, _ = struct.unpack_from('<HH', p, TAIL - 56)
     depth, stencil = struct.unpack_from('<BB', p, TAIL - 16)
     v20 = packfile.PIPELINE_V20.unpack_from(p, V20_AT)
     out = set()
-    for word, count in ((blend, 8), (half, 4), (depth, 1), (stencil, 1), *((w, 2) for w in v20[:4])):
+    for word, count in ((half, 4), (depth, 1), (stencil, 1), *((w, 2) for w in v20[:4])):
         out.update(range(word - 1, word - 1 + count) if word else ())
     return out
 

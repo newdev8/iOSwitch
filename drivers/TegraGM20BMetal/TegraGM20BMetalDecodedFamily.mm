@@ -91,6 +91,8 @@ bool gm20bKeepDecodedBlocks(SwitchMetalTexture *t)
         return false;
     // a new texture's blocks are zeros, which its readbacks give back and its views decode
     memset(b->_raw.cpu, 0, size_t(bytes));
+    SWITCH_METAL_DIAGNOSTIC(b->_raw.keptBytes = bytes);
+    SWITCH_METAL_DIAGNOSTIC(gRM->raw->stats.textureBytes += bytes);
     t->_keptBlocks = b;
     return true;
 }

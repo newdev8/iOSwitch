@@ -213,7 +213,7 @@ int main(int argc, char **argv)
             direct.selectorConfigs(&selectors);
         }
         FILE *met = getenv("DIRECTCHECK_MET") ? fopen(getenv("DIRECTCHECK_MET"), "a") : nullptr;
-        uint32_t states = 0, same = 0, barriers = 0, refused = 0, bad = 0, splits = 0, planes = 0;
+        uint32_t states = 0, same = 0, barriers = 0, refused = 0, bad = 0, splits = 0;
         double ms = 0;
         std::map<std::string, uint32_t> differences, reasons;
         // DIRECTCHECK_BARRIER=1: each state's barrier form against the pack's
@@ -222,7 +222,6 @@ int main(int argc, char **argv)
         const auto check = [&](const std::string &line, const probe::State &s, const std::string &key,
                                const gm20b::ProbeTextures &textures) {
             states++;
-            planes += textures.twoPlane;
             const size_t named = gm20b::variantNameAt(key);
             const uint64_t keyHash = gm20b::packKeyHash(key.substr(0, named));
             const gm20b::PackForm requested = barrierForm ? gm20b::PackForm::Barrier : gm20b::PackForm::Default;
@@ -243,8 +242,7 @@ int main(int argc, char **argv)
             ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - began).count();
             if (outcome == gm20b::CompileOutcome::Made && !direct.storageRefusal().empty())
                 printf("BARRIER FORM (%s): %s\n", direct.storageRefusal().c_str(), key.substr(0, 160).c_str());
-            if (const char *dir = getenv("DIRECTCHECK_DUMP");
-                dir && *dir && outcome == gm20b::CompileOutcome::Made && !textures.twoPlane) {
+            if (const char *dir = getenv("DIRECTCHECK_DUMP"); dir && *dir && outcome == gm20b::CompileOutcome::Made) {
                 const auto found = selectors.find(keyHash);
                 dumpRecord(dir, key, rec, nullptr, found == selectors.end() ? nullptr : &found->second);
                 dumpFetchFree(direct, s, line, key, textures, dir);
@@ -274,8 +272,7 @@ int main(int argc, char **argv)
             if (!verdict.empty()) {
                 bad++;
                 differences[verdict.substr(0, verdict.find('['))]++;
-                printf("DIFFERS%s%s%s: %s\n", barrier ? " (barrier)" : "", textures.twoPlane ? " (two-plane)" : "",
-                       verdict.c_str(), s.key.substr(0, 160).c_str());
+                printf("DIFFERS%s%s: %s\n", barrier ? " (barrier)" : "", verdict.c_str(), s.key.substr(0, 160).c_str());
             }
             return outcome;
         };
@@ -296,11 +293,7 @@ int main(int argc, char **argv)
                 textures.written = s.written;
                 const std::string sampled =
                     (s.xrSlots ? gm20b::xrSampledVariant(s.xrSlots) : std::string()) + gm20b::writtenVariant(s.written);
-                if (check(line, s, s.key + tests + sampled, textures) != gm20b::CompileOutcome::Made ||
-                    !probe::twoPlaneColors(s.key))
-                    return;
-                textures.twoPlane = true;
-                check(line, s, s.key + tests + gm20b::kXrPlanesVariant + sampled, textures);
+                check(line, s, s.key + tests + sampled, textures);
             },
             [&](const std::string &line, const std::string &why) {
                 printf("NO STATE (%s): %s\n", why.c_str(), line.substr(0, 160).c_str());
@@ -313,10 +306,8 @@ int main(int argc, char **argv)
         for (const auto &[why, n] : reasons)
             printf("  %u x refused: %s\n", n, why.c_str());
         printf("directcheck: %u states made directly: %u records the same as the pack's, %u the same as its barrier "
-               "forms, "
-               "%u set aside and refused, %u differ; %u with the pack's split; %.1f ms a state; %u of them two-plane "
-               "forms\n",
-               states, same, barriers, refused, bad, splits, states ? ms / states : 0.0, planes);
+               "forms, %u set aside and refused, %u differ; %u with the pack's split; %.1f ms a state\n",
+               states, same, barriers, refused, bad, splits, states ? ms / states : 0.0);
         return bad || !states ? 1 : 0;
     }
 }

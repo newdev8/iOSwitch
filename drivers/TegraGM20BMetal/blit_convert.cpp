@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// The blit encoder's copies that make an image a texture is sampled through from its own bytes (gpu.h BlitEncoder): an
+// The blit encoder's copies that make an image a texture is sampled through from its own bytes (blit_encoder.h): an
 // RG8Unorm_sRGB stand-in, a planar texture's codes image, a one-plane 4:2:2 texture's luma and chroma
 #include "gpu.h"
 #include "srgb_pair.h"
@@ -33,8 +33,8 @@ bool BlitEncoder::widenSrgbPair(const Texture &t)
     const uint32_t widen = remapOf(0, 1, kRemapNoWrite, kRemapNoWrite, 1, 2, 4);
     for (const XrPart &part : parts) {
         room();
-        copyRemapped(p_, sideOf(part.codes, 0, 0, 0), sideOf(part.standIn, 0, 0, 0), part.codes.width,
-                     part.codes.height, widen, 2, dev_->stats);
+        copyElements(sideOf(part.codes, 0, 0, 0), sideOf(part.standIn, 0, 0, 0), part.codes.width, part.codes.height,
+                     widen, 2);
     }
     return true;
 }
@@ -83,20 +83,13 @@ void BlitEncoder::splitPlane(const Texture &t)
                     false);
     cb_->use(*t.luma, true);
     cb_->use(*t.chroma, true);
-    SWITCH_METAL_DIAGNOSTIC(dev_->stats.ceOps += 2);
-    SWITCH_METAL_DIAGNOSTIC(dev_->stats.ceBytes += uint64_t(pairs) * height * 4);
     constexpr uint32_t one = 0 << 16, src4 = 3u << 20, dst2 = 1u << 24;
     for (const Texture *to : {t.luma, t.chroma}) {
         // Y0, Y1 or Cb, Cr of Y0 Cb Y1 Cr (of Cb Y0 Cr Y1: Texture::pairsReversed)
         const bool luma = (to == t.luma) != t.pairsReversed;
         const uint32_t remap = luma ? 0 | 2 << 4 : 1 | 3 << 4;
-        room();
-        p_.m(CE_SET_REMAP_COMPONENTS, remap | one | src4 | dst2, SUBC_COPY);
-        p_.inc(CE_OFFSET_IN_UPPER,
-               {uint32_t(t.planes.luma >> 32), uint32_t(t.planes.luma), uint32_t(to->va >> 32), uint32_t(to->va),
-                t.planes.lumaPitch, to->pitch, pairs, height},
-               SUBC_COPY);
-        p_.m(CE_LAUNCH_DMA, kLaunchPitch | 1u << 10, SUBC_COPY);
+        copyElements({t.planes.luma, t.planes.lumaPitch}, {to->va, to->pitch}, pairs, height, remap | one | src4 | dst2,
+                     2);
     }
 }
 
@@ -111,15 +104,7 @@ void BlitEncoder::mergePlane(const Texture &t)
     cb_->use(*t.luma, false);
     cb_->use(*t.chroma, false);
     const auto launch = [&](uint64_t from, uint32_t fromPitch, uint64_t to, uint32_t remap, uint32_t width) {
-        room();
-        p_.m(CE_SET_REMAP_COMPONENTS, remap, SUBC_COPY);
-        p_.inc(CE_OFFSET_IN_UPPER,
-               {uint32_t(from >> 32), uint32_t(from), uint32_t(to >> 32), uint32_t(to), fromPitch, t.planes.lumaPitch,
-                width, t.height},
-               SUBC_COPY);
-        p_.m(CE_LAUNCH_DMA, kLaunchPitch | 1u << 10, SUBC_COPY);
-        SWITCH_METAL_DIAGNOSTIC(dev_->stats.ceOps++);
-        SWITCH_METAL_DIAGNOSTIC(dev_->stats.ceBytes += uint64_t(width) * t.height * 4);
+        copyElements({from, fromPitch}, {to, t.planes.lumaPitch}, width, t.height, remap, 4);
     };
     // Y0 Cb Y1 Cr, or Cb Y0 Cr Y1 (Texture::pairsReversed): luma's bytes 0 and 2 of a pair, chroma's 1 and 3, or the reverse
     constexpr uint32_t W = kRemapNoWrite;

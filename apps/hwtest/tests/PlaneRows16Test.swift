@@ -8,8 +8,8 @@ import Metal
 /// cover it). Metal's GPU reads such a plane from its offset and rows rounded down to 16 (384, 48 apart), and the CPU's
 /// replaceRegion and getBytes use the plane's own (m2v linear_plan.rs, measured on an M3 Max and an M4). The driver makes
 /// the texture at that GPU layout and keeps the CPU rows apart (drivers/TegraGM20BMetal TegraGM20BMetalDevice.mm,
-/// TegraGM20BMetalTexture.mm). A plane whose rows overlap once rounded (13 texels in rows of 60) is nil, as m2v refused it.
-/// No command buffer may fail (failed_cbs=).
+/// TegraGM20BMetalTexture.mm). A plane whose rows overlap once rounded (13 texels in rows of 60) is made, as an M4 Max
+/// makes it, and getBytes reads it at its own rows (facade_texture_rows_test). No command buffer may fail (failed_cbs=).
 struct PlaneRows16Test: HWTest {
     let id = "gpu.gm20b.plane_rows16"
     let name = "A surface plane off 16 is read at Metal's GPU layout and written at its own rows"
@@ -52,7 +52,13 @@ struct PlaneRows16Test: HWTest {
             return .fail("no texture over plane 1", metrics)
         }
         descriptor.width = 13
-        if gpu.device.makeTexture(descriptor: descriptor, iosurface: surface, plane: 2) != nil {
+        if let overlapping = gpu.device.makeTexture(descriptor: descriptor, iosurface: surface, plane: 2) {
+            var row = [UInt8](repeating: 0, count: 13 * 4)
+            overlapping.getBytes(&row, bytesPerRow: 13 * 4, from: MTLRegionMake2D(0, 2, 13, 1), mipmapLevel: 0)
+            if row != Array(UnsafeBufferPointer(start: base + 1024 + 2 * 60, count: 13 * 4)) {
+                wrong.append("overlapping_cpu_rows")
+            }
+        } else {
             wrong.append("overlapping_rows")
         }
 

@@ -365,6 +365,21 @@ bool Device::stencilTemp(Texture &t)
     return true;
 }
 
+bool Device::sampleRows(Texture &t)
+{
+    uint32_t gx = 0, gy = 0;
+    sampleGrid(t.samples, gx, gy);
+    if (t.sampleRows || !gy)
+        return true;
+    Texture *rows = new Texture;
+    if (!createTexture(t.width << gx, t.height << gy, t.format, *rows)) {
+        delete rows;
+        return false;
+    }
+    t.sampleRows = rows;
+    return true;
+}
+
 bool Device::createMemoryless(uint32_t width, uint32_t height, uint32_t format, Texture &t, uint32_t samples,
                               uint32_t layers)
 {

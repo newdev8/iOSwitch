@@ -29,7 +29,7 @@ int thread_selfcounts(int type, void *buf, size_t nbytes);
 }
 
 @protocol RecordCostChunkStats <NSObject>
-+ (NSDictionary<NSString *, NSNumber *> *)switchMetalBytesChunkStats;  // TegraGM20BMetalCommandBuffer.mm (debug builds)
++ (NSDictionary<NSString *, NSNumber *> *)switchMetalBytesChunkStats;  // TegraGM20BMetalRecordings.mm (debug builds)
 @end
 
 @protocol RecordCostCoreAnimationSPI

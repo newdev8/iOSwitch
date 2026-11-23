@@ -185,6 +185,11 @@ extern "C" void switch_gpu_events_charge(int pid)
 	}
 }
 
+extern "C" int switch_gpu_events_charged(void)
+{
+	return chargedPid();
+}
+
 extern "C" int switch_gpu_events_compositor(int pid, int on)
 {
 	if (pid <= 0)

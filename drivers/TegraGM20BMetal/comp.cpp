@@ -5,6 +5,8 @@
 
 #include <os/log.h>
 #include <pthread.h>
+#include <stdlib.h>
+#include <unistd.h>
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -128,6 +130,7 @@ void Device::compStart()
                 compRearm_ = false;
                 compMake(l);
                 zbcMake(l);
+                SWITCH_METAL_DIAGNOSTIC(compSettledRun(l));
                 trimBackings();
             }
         });
@@ -248,9 +251,6 @@ void Device::compMake(std::unique_lock<gm20b::Mutex> &l)
                          shortage ? "those backings stay uncompressed until this process gives compressed memory back"
                                   : "that backing stays uncompressed");
     }
-#if SWITCH_METAL_DIAGNOSTICS
-    compSettledRun(l);
-#endif
 }
 
 void Device::compStop()
@@ -269,7 +269,7 @@ void Device::compWhenSettled(std::function<void()> settled)
 {
     {
         std::lock_guard<gm20b::Mutex> l(lock_);
-        if (!comp_.wanted.empty() && !stopping_) {
+        if (compUnsettled()) {
             compSettled_.push_back(std::move(settled));
             return;
         }
@@ -277,10 +277,16 @@ void Device::compWhenSettled(std::function<void()> settled)
     settled();
 }
 
-// `l` holds lock_, dropped around the calls: a caller may make textures, which take it
+bool Device::compUnsettled()
+{
+    return !stopping_ && (!comp_.wanted.empty() || zbc_.unanswered());
+}
+
+// `l` holds lock_, dropped around the calls: a caller may make textures, which take it. An ask that came while zbcMake
+// had it dropped leaves them for the loop's next pass.
 void Device::compSettledRun(std::unique_lock<gm20b::Mutex> &l)
 {
-    if (compSettled_.empty())
+    if (compSettled_.empty() || compUnsettled())
         return;
     std::vector<std::function<void()>> settled;
     settled.swap(compSettled_);
@@ -401,9 +407,9 @@ void Device::zbcMake(std::unique_lock<gm20b::Mutex> &l)
         if (kr == kIOReturnNoResources && zbc_.firstFull(e.type))
             os_log_error(
                 compLog(),
-                "SwitchMetal: the GPU's ZBC %{public}s table is full (every process's, never emptied): full clears of "
-                "compressed targets to values it lacks write their texels",
-                e.type == TegraGM20BZbcDepth ? "depth" : "colour");
+                "SwitchMetal: %{public}s[%d] the GPU's ZBC %{public}s table is full (every process's, never emptied): "
+                "full clears of compressed targets to values it lacks write their texels",
+                getprogname(), getpid(), e.type == TegraGM20BZbcDepth ? "depth" : "colour");
         else if (kr != KERN_SUCCESS && kr != kIOReturnNoResources)
             os_log_error(compLog(),
                          "SwitchMetal: ZBC entry format 0x%x not added (0x%x): those clears write their texels",

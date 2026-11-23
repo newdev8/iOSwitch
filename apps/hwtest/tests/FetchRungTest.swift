@@ -147,7 +147,7 @@ struct FetchRungTest: HWTest {
             metrics.set("us_rung\(rung)_\(state.key)", m.us[1], digits: 1)
             if state.passes > 0 { metrics.set("us_pass_\(state.key)", m.us[1] / Double(state.passes), digits: 2) }
             metrics.set("covered_\(state.key)", m.covered)
-            let within = m.worst <= Self.bound && m.paths == "raw/raw"
+            let within = m.worst <= Self.bound && m.paths == "gm20b/gm20b"
             if state.codesOnly {
                 if m.covered == 0 { metrics.set("uncompared_\(state.key)", 1) }
                 if m.covered > 0 && !within {

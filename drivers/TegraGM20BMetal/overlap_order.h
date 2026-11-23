@@ -29,10 +29,11 @@ struct OverlapRows {
     uint32_t masked = 0;  // a loaded pass: only rows in the 32x32 frame tiles its draws reach store (tiles)
     uint32_t kept = ~0u;  // a row's byte no store writes (an odd-width one-plane target's last Y1), ~0u: none
     uint32_t pairs = 0;   // a one-plane target's pairs from its luma and chroma images: 1 Y0 Cb Y1 Cr, 2 Cb Y0 Cr Y1
+    uint32_t copied = 0;  // a copy's stores, in copyOrder, not a pass's
     TileMap tiles;        // each luma texel's frame texel and tile, a turned target's in its frame
 };
 
-static_assert(sizeof(OverlapRows) == 76, "pack/ycbcr_store_overlap.h OverlapRows");
+static_assert(sizeof(OverlapRows) == 80, "pack/ycbcr_store_overlap.h OverlapRows");
 
 // Where the store of frame texel (x, y) lands inside its 64x32 tile: the right 32-texel half later, then the 2x2 quad's
 // row, then its column, then the even row of a quad after the odd one (an M4 Max stores a pass by quads: the later quad
@@ -49,6 +50,17 @@ inline uint32_t overlapOrder(uint32_t x, uint32_t y)
 {
     const uint32_t tileRow = y / 32, tileColumn = x / 64;
     return (0x3ffu - tileRow) << 18 | (0xffu - tileColumn) << 10 | inTileOrder(x, y);
+}
+
+// Where an M4 Max's copy from a buffer into texels of 8 and 16 bytes stores texel (x, y), later higher: 32x32 tiles from
+// the last tile row up, each row from its last tile back; in a tile the 2x2 quad's row, then its column, the even row of
+// a quad after the odd. Its tiles race (a 100x70 RGBA32Uint over rows of 256: 156 of 1172 elements alike in ten runs);
+// every element ten runs agree on follows this order in 5 of 7 shapes, 32 of 752 and 96 of 312 off in the two largest,
+// where every other fixed order misses more (macOS 27.2.1)
+inline uint32_t copyOrder(uint32_t x, uint32_t y)
+{
+    return (0x3ffu - y / 32) << 18 | (0xffu - x / 32) << 10 | (y % 32 / 2) << 5 | (x % 32 / 2) << 1 |
+           ((y & 1) == 0 ? 1u : 0u);
 }
 
 // The frame texel `map` takes the top-left of a store of `across` x `down` plane texels from (x, y) to: the frame's first
@@ -99,7 +111,7 @@ inline bool overlapWinner(const OverlapRows &s, uint32_t a, Reached reached, uin
             continue;
         uint32_t fx = 0, fy = 0;
         frameTexel(s.tiles, x, y, s.across, s.down, fx, fy);
-        if (const uint32_t order = frameOrder(s.tiles, fx, fy); !found || order > best) {
+        if (const uint32_t order = s.copied ? copyOrder(fx, fy) : frameOrder(s.tiles, fx, fy); !found || order > best) {
             found = true;
             best = order;
             row = r;

@@ -154,7 +154,107 @@ protected:
         EXPECT_EQ(memcmp(from, sourceBytes.data(), sourceBytes.size()), 0);
         EXPECT_EQ(memcmp(to, expected.data(), expected.size()), 0);
     }
+
+    // A copy between a multisampled colour texture and a buffer of `samples` samples, both ways, as an M4 Max lays the
+    // buffer out: row y at offset + y * bytesPerRow holds texel (x, y)'s samples in order from the copy's origin (2x and
+    // 4x, texels of 1 to 16 bytes, a part at a longer row and an offset)
+    static void bufferCopy(MTLPixelFormat format, uint32_t samples, bool whole, bool intoTexture)
+    {
+        SCOPED_TRACE(testing::Message() << format << ", samples " << samples << ", whole " << whole << ", into "
+                                        << intoTexture);
+        kernel_model::model.unknownUsesRefused = true;
+        auto *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:format width:37 height:29 mipmapped:NO];
+        d.textureType = MTLTextureType2DMultisample;
+        d.sampleCount = samples;
+        d.storageMode = MTLStorageModePrivate;
+        d.usage = MTLTextureUsageShaderRead | MTLTextureUsageRenderTarget;
+        id<MTLTexture> texture = [device newTextureWithDescriptor:d];
+        ASSERT_NE(texture, nil);
+        const gm20b::Texture &t = ((SwitchMetalTexture *)texture)->_raw;
+        auto queue = [device newCommandQueue];
+        auto cleared = [queue commandBuffer];
+        auto *pass = [MTLRenderPassDescriptor renderPassDescriptor];
+        pass.colorAttachments[0].texture = texture;
+        pass.colorAttachments[0].loadAction = MTLLoadActionClear;
+        pass.colorAttachments[0].storeAction = MTLStoreActionStore;
+        [[cleared renderCommandEncoderWithDescriptor:pass] endEncoding];
+        [cleared commit];
+        [cleared waitUntilCompleted];
+        ASSERT_EQ(cleared.status, MTLCommandBufferStatusCompleted);
+        const auto range = t.storageRange();
+        uint8_t *grid = kernel_model::model.host(range.va, range.bytes);
+        ASSERT_NE(grid, nullptr);
+        const uint32_t bpp = t.bpp, x0 = whole ? 0 : 9, y0 = whole ? 0 : 5, w = whole ? 37 : 17, h = whole ? 29 : 11;
+        const uint32_t row = w * samples * bpp + (whole ? 0 : 3 * bpp), at = whole ? 0 : 4 * bpp,
+                       length = at + row * h + 256;
+        std::vector<uint8_t> image(range.bytes), rows(length);
+        for (size_t i = 0; i < image.size(); ++i)
+            image[i] = intoTexture ? 0xa5 : uint8_t(i * 13 + (i >> 9) * 7 + samples);
+        for (size_t i = 0; i < rows.size(); ++i)
+            rows[i] = intoTexture ? uint8_t(i * 29 + (i >> 7) * 3) : 0x22;
+        memcpy(grid, image.data(), image.size());
+        id<MTLBuffer> buffer =
+            [device newBufferWithBytes:rows.data() length:length options:MTLResourceStorageModeShared];
+        std::vector<uint8_t> wantImage = image, wantRows = rows;
+        for (uint32_t y = 0; y < h; ++y)
+            for (uint32_t x = 0; x < w; ++x)
+                for (uint32_t sample = 0; sample < samples; ++sample)
+                    for (uint32_t byte = 0; byte < bpp; ++byte) {
+                        const uint64_t texel = offset(t, x0 + x, y0 + y, sample, byte),
+                                       slot = at + uint64_t(y) * row + (uint64_t(x) * samples + sample) * bpp + byte;
+                        ASSERT_LT(texel, image.size());
+                        if (intoTexture)
+                            wantImage[texel] = rows[slot];
+                        else
+                            wantRows[slot] = image[texel];
+                    }
+        auto cb = [queue commandBuffer];
+        auto e = [cb blitCommandEncoder];
+        if (intoTexture)
+            [e copyFromBuffer:buffer
+                       sourceOffset:at
+                  sourceBytesPerRow:row
+                sourceBytesPerImage:row * h
+                         sourceSize:MTLSizeMake(w, h, 1)
+                          toTexture:texture
+                   destinationSlice:0
+                   destinationLevel:0
+                  destinationOrigin:MTLOriginMake(x0, y0, 0)];
+        else
+            [e copyFromTexture:texture
+                             sourceSlice:0
+                             sourceLevel:0
+                            sourceOrigin:MTLOriginMake(x0, y0, 0)
+                              sourceSize:MTLSizeMake(w, h, 1)
+                                toBuffer:buffer
+                       destinationOffset:at
+                  destinationBytesPerRow:row
+                destinationBytesPerImage:row * h];
+        [e endEncoding];
+        ASSERT_NO_FATAL_FAILURE(execute(cb));
+        EXPECT_EQ(memcmp(grid, wantImage.data(), wantImage.size()), 0);
+        EXPECT_EQ(memcmp(buffer.contents, wantRows.data(), wantRows.size()), 0);
+    }
 };
+
+TEST_F(FacadeMultisampleCopies, BufferCopiesHoldEachTexelsSamplesInOrder)
+{
+    struct Case {
+        MTLPixelFormat format;
+        uint32_t samples;
+        bool whole;
+    };
+
+    for (const Case &c : {Case{MTLPixelFormatRGBA8Unorm, 4, true}, Case{MTLPixelFormatRGBA8Unorm, 4, false},
+                          Case{MTLPixelFormatRGBA8Unorm, 2, false}, Case{MTLPixelFormatR8Unorm, 4, false},
+                          Case{MTLPixelFormatRG8Unorm, 4, true}, Case{MTLPixelFormatRGBA16Float, 4, false},
+                          Case{MTLPixelFormatRGBA16Float, 2, true}, Case{MTLPixelFormatRGBA32Float, 4, false}})
+        for (bool into : {false, true}) {
+            @autoreleasepool {
+                bufferCopy(c.format, c.samples, c.whole, into);
+            }
+        }
+}
 
 TEST_F(FacadeMultisampleCopies, PartialCopiesPreserveEverySampleAndNeighbor)
 {

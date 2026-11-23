@@ -5,8 +5,8 @@ import HWTestGPU
 import Metal
 
 /// gpu.gm20b.xr_two_plane's cells beyond the planes' own bytes, each against the CPU model (XRTwoPlaneModel): blended
-/// draws of the app's own state (made on the device, its storage form alone), Core Animation's source-over in the pack
-/// record's storage form and in its barrier form (probe_forms.h fetch=barrier), each within one code, a surface
+/// draws of the app's own state (made on the device, blended by the ROP in the stand-in, no interlock), Core Animation's
+/// source-over of its framebuffer fetch in the pack record's storage form and in its barrier form (probe_forms.h fetch=barrier), each within one code, a surface
 /// whose alpha rows miss a pitch target's 128 bytes, and samples through the texture's header pair
 /// (nvk_switch_xr_planes.h): nearest exact, linear within a half step of Metal's filter, and gathers of alpha and red.
 struct XRTwoPlaneCells {
@@ -66,8 +66,8 @@ struct XRTwoPlaneCells {
     }
 
     /// Core Animation's untextured source-over fill into 'b3a8' beside its memoryless 550 and R32Float, verbatim from the
-    /// corpus: the pack's record fetches the 550 colour and blends over it in the program (its storage form, and its
-    /// barrier twin), both planes' (" | xr2p")
+    /// corpus: the pack's record fetches the 550 colour's stand-in and blends over it in the program (its storage form,
+    /// and its barrier twin)
     static let fetchLine =
         "R ok=1 label=com.apple.coreanimation.Pb3a8BsovXmw_A3Xhfx samples=1 topo=0 ds=0/0"
             + " c0=550:15:1:1:5:0:1:5:0 c1=550:0:0:1:0:0:1:0:0 c2=55:0:0:1:0:0:1:0:0"

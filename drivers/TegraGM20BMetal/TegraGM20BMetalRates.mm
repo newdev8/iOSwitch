@@ -457,7 +457,7 @@ void watchFetchBarrierWay(gm20b::Device *dev)
     }
 }
 
-// The keyline probe armed (gpu.h armKeylineProbe) in every process by HW Test's ui.pocket_keyline before it draws
+// The keyline probe armed (pipeline.h armKeylineProbe) in every process by HW Test's ui.pocket_keyline before it draws
 // (`idevicenotificationproxy -u <udid> post com.brunostjohn.switch.debug.keyline-probe` from the Mac)
 void watchKeylineProbe()
 {

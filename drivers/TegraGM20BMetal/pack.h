@@ -37,7 +37,7 @@ enum PackSectionId {
     PackSectionCount
 };
 
-constexpr uint32_t kPackVersion = 29;
+constexpr uint32_t kPackVersion = 30;
 
 // What a record or a program variant (PackVariant) assumes, as bits of a mask: a draw takes a variant only where all of them
 // hold. Bits 0-15 are facts of the draw's bindings, bit 16 of its pipeline, bit 26 of its pass, bits 17-25 of the chip
@@ -224,10 +224,7 @@ enum PackEntryKind : uint8_t {
     // m2v's ArgumentTable of stage `stage` (spill_table.h): a uniform buffer descriptor of the words the encoder uploads
     EntrySpillTable = 10,
     // A tessellation state's control-stage storage buffer (PackTessBuffer at `slot`), its residual word the control stage's
-    EntryTessBuffer = 11,
-    // The pass's half shadow of extended-range colour `slot` (xr_shadow.h): an RGBA16Float storage image the program
-    // reads as the tile and writes beside the colour's codes
-    EntryXrShadow = 12
+    EntryTessBuffer = 11
 };
 
 // What an EntryTessBuffer binds: the encoder's factor buffer, the draw's patch index buffer, its control-point index buffer
@@ -314,19 +311,17 @@ enum PackPipelineFlags : uint32_t {
     // its fragment program reads a turned plane's axes and no turned variant (AssumeTurned) could be made of it: a turned pass
     // does not draw it
     PipelineTurnRefused = 64,
-    // its RGB10A8_2P_XR10 colours drawn in Metal's two planes (xr_pass.h): the record of the state's " | xr2p" variant
-    PipelineTwoPlane = 128,
     // its fragment program runs whole inside the pixel interlock with no colour in the storage form: m2v orders the
     // function's raster order groups so (rog.rs), each pixel's fragments in primitive order by the ticket
     PipelineRasterOrdered = 256
 };
 
-// Where a key's variant name starts (" | cubic ...", then " | tests=<n>", then " | xr2p", then " | xrs=<slots>", then
+// Where a key's variant name starts (" | cubic ...", then " | tests=<n>", then " | xrs=<slots>", then
 // " | wtex=<slot>:<format>,...": the runtime's names, TegraGM20BMetalCubic.mm), its size where it names none
 inline size_t variantNameAt(const std::string &key)
 {
-    return std::min({key.find(" | cubic "), key.find(" | tests="), key.find(" | xr2p"), key.find(" | xrs="),
-                     key.find(" | wtex="), key.size()});
+    return std::min(
+        {key.find(" | cubic "), key.find(" | tests="), key.find(" | xrs="), key.find(" | wtex="), key.size()});
 }
 
 // Which of a state's records: its first (the storage form where it has both), its barrier form, or its fetch-free form
@@ -426,8 +421,8 @@ struct PackPipeline {
     uint32_t
         pushMask;  // root-table words [0x700, 0x780) the state's push ranges write (m2v's windows, as NVK wrote them)
     uint32_t pushWords[32];
-    uint8_t blendColorWord, halfBlendColorWord;  // push word + 1, zero when absent
-    uint16_t iterated;  // a fetch-free form's iterated blend: its PackIteratedBlend's index + 1; 0: none
+    uint16_t halfBlendColorWord;  // push word + 1, zero when absent
+    uint16_t iterated;            // a fetch-free form's iterated blend: its PackIteratedBlend's index + 1; 0: none
     uint8_t storageMask, storageWriteMask, storageSamples, storageTests;
     uint32_t storageTic[8];
     PackShaderTests shaderTests;
@@ -745,8 +740,7 @@ public:
     }
 
     const PackPipeline *find(uint64_t keyHash, PackForm form = PackForm::Default) const;  // nullptr: not in the pack
-    // the state's PipelineVariantRecords, and the one named `name` (variantNameAt) of `form` (a two-plane form's storage
-    // form has its barrier twin, xr_pass.h); nullptr: not in the pack
+    // the state's PipelineVariantRecords, and the one named `name` (variantNameAt) of `form`; nullptr: not in the pack
     std::vector<const PackPipeline *> variantRecords(uint64_t keyHash) const;
     const PackPipeline *variantRecord(uint64_t keyHash, const std::string &name,
                                       PackForm form = PackForm::Default) const;

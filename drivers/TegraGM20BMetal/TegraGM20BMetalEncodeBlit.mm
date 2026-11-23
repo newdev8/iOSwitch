@@ -15,6 +15,7 @@
 #include "fill_record.h"
 #include "mip.h"
 #include "overlap_rows.h"
+#include "plain_rows.h"
 #include "rotated_pass.h"
 #include "twod_fill.h"
 
@@ -64,14 +65,14 @@ void gm20bCopyPlanes(gm20b::BlitEncoder *be, gm20b::CommandBuffer *rc, const gm2
                      uint32_t w, uint32_t h, uint32_t planes, bool intoTexture, uint8_t aspect)
 {
     gm20b::toElements(t, x, y, w, h);  // (whole blocks: checked at record)
-    const uint32_t unit = gm20b::bufferUnit(t, aspect);
+    const uint32_t unit = gm20b::bufferUnit(t, aspect), rowBytes = w * unit * std::max<uint32_t>(t.samples, 1);
     for (uint32_t k = 0; k < std::max(planes, 1u); k++) {
         const uint64_t at = offset + k * image;
         BufferRows rows;
-        bufferRows(at, row, h, w * unit, unit, intoTexture, rows);
+        bufferRows(at, row, h, rowBytes, unit, intoTexture, rows);
         const uint64_t first = bufferRow(rows, at, row, 0);
         if (!b.wc)
-            rc->clean(b.cpu + first, bufferRow(rows, at, row, h - 1) - first + w * unit, !intoTexture);
+            rc->clean(b.cpu + first, bufferRow(rows, at, row, h - 1) - first + rowBytes, !intoTexture);
         copyRows(be, b.va, rows, at, row, t, x, y, z + k, w, h, intoTexture, aspect);
     }
 }
@@ -343,6 +344,16 @@ bool encodeBlit(SwitchMetalCommandBuffer *cb, const Cmd &c, gm20b::CommandBuffer
         if (!fresh.empty())
             fresh.erase(t);
         standInFresh.erase(t);
+        if (!dl && gm20b::copiedThroughPool(t->_raw, uint32_t(o), uint32_t(o >> 32), uint32_t(w), uint32_t(h))) {
+            gm20bCopyPlanes(be, rc, s->_raw, so, row, image, *t->_raw.sampled, 0, 0, 0, uint32_t(w), uint32_t(h), 1,
+                            true, uint8_t(c.a));
+            be->end();
+            const int stored = gm20b::storeCopiedPlainRows(*gRM->raw, *rc, t->_raw, why);
+            be = rc->blit();
+            if (stored)
+                return false;
+            break;
+        }
         gm20b::Texture level;
         gm20bBufferCopyImage(t, uint32_t(dl), level, true);
         gm20bCopyPlanes(be, rc, s->_raw, so, row, image, level, uint32_t(o), uint32_t(o >> 32), uint32_t(dz),
@@ -492,6 +503,13 @@ bool encodeMipmaps(gm20b::CommandBuffer *rc, SwitchMetalTexture *t, uint32_t pro
         const bool ok = mipVolumePasses(rc, t, first, last, why);
         be = rc->blit();
         return ok;
+    }
+    if (gm20b::fx::integerFormat(t->_raw.format)) {
+        useTexture(rc, t, true);
+        be->access(memoryOf(t), memoryOf(t));
+        be->generate(owner->_raw, gm20b::fx::twodPointFormat(t->_raw.bpp), first, last, 0, t->_slicesBase,
+                     t->_raw.layers, true);
+        return true;
     }
     const uint32_t fmt2d = probe2d                                ? probe2d
                            : t->_raw.format == owner->_raw.format ? chain.fmt2d

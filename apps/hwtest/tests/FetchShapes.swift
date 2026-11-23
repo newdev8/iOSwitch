@@ -1,3 +1,4 @@
+import HWTestCore
 import Metal
 
 /// One draw of a fetch shape: its vertices are points[vertex_id] (shaders/FramebufferFetch.metal fetch_count_vertex), in
@@ -27,9 +28,38 @@ struct FetchDraw {
     }
 }
 
-/// A destination-reading scene on an 8x8 (or larger) BGR5A1Unorm target cleared to 0: its draws and the 5-bit codes
-/// (red, green, blue) each pixel must end with, row by row from the top. An `icb` scene's draws are the commands of one
-/// indirect command buffer that inherits the pass's state and vertex buffer, so they share their draws' first points.
+/// A 16-bit target of the fetch scenes: blue in bits 0-4, green in the `greenBits` above, red in the five above those
+/// (fill_texel.h), and how its fetching states keep raster order. NVK grants neither format storage access;
+/// BGR5A1Unorm's storage form views it as R16_UINT (the translator's fetch/packed.rs), B5G6R5Unorm has none.
+struct FetchTarget {
+    let name: String
+    let format: MTLPixelFormat
+    let greenBits: Int
+    let route: FetchRoute
+
+    static let all = [
+        FetchTarget(name: "bgr5a1", format: .bgr5A1Unorm, greenBits: 5, route: .interlock),
+        FetchTarget(name: "b5g6r5", format: .b5g6r5Unorm, greenBits: 6, route: .macro),
+    ]
+
+    func codes(_ bytes: [UInt8]) -> [SIMD3<UInt8>] {
+        let green = UInt16(1 << greenBits - 1)
+        return stride(from: 0, to: bytes.count - 1, by: 2).map { at in
+            let word = UInt16(bytes[at]) | UInt16(bytes[at + 1]) << 8
+            return SIMD3(UInt8((word >> (5 + greenBits)) & 31), UInt8((word >> 5) & green), UInt8(word & 31))
+        }
+    }
+
+    /// A scene's codes on this target: its green, written as code / 31, in the target's green bits
+    func expected(_ codes: [SIMD3<UInt8>]) -> [SIMD3<UInt8>] {
+        let top = Double(1 << greenBits - 1)
+        return codes.map { SIMD3($0.x, UInt8((Double($0.y) * top / 31).rounded()), $0.z) }
+    }
+}
+
+/// A destination-reading scene on an 8x8 (or larger) target cleared to 0: its draws and the 5-bit codes (red, green,
+/// blue) each pixel must end with, row by row from the top. An `icb` scene's draws are the commands of one indirect
+/// command buffer that inherits the pass's state and vertex buffer, so they share their draws' first points.
 struct FetchShape {
     let side: Int
     var vertex = "fetch_count_vertex"

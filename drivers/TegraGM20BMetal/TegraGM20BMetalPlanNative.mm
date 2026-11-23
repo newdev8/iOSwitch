@@ -88,7 +88,7 @@ struct NativePlanSink {
             rasterChanged(next, previous, R::Pipeline, &R::nativePipeline) ||
             rasterChanged(next, previous, R::Pipeline, &R::nativeVariant)) {
             __unsafe_unretained SwitchMetalPipeline *pipeline = (__bridge SwitchMetalPipeline *)next.pipeline;
-            render->setPipeline(nativeOf(next, cb->_xrShadowCurrent));
+            render->setPipeline(nativeOf(next));
             render->setAlphaControl(pipeline ? pipeline->_alphaControl : 0);
         }
         if (rasterChanged(next, previous, R::DepthStencil, &R::depthStencil)) {

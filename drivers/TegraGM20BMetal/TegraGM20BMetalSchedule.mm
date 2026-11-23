@@ -407,8 +407,6 @@ void submitLoop()
                     int ready = variantReadiness(cb, range, &why);
                     if (ready > 0)
                         ready = computeReadiness(cb, range, &why);
-                    if (ready > 0)
-                        ready = gm20bXrShadowReadiness(cb, range.from, range.to);
                     if (ready == -2) {
                         error = [NSError
                             errorWithDomain:MTLCommandBufferErrorDomain

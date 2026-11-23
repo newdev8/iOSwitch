@@ -85,9 +85,6 @@ inline bool usableStorage(const PackPipeline &pipeline, const SetEntries &entrie
                 return false;
             bound |= 1u << e.slot;
         }
-        // a colour's half shadow is read and written inside the interlock of its own storage form
-        if (e.kind == EntryXrShadow && (e.stage != 2 || e.slot >= 8 || !(pipeline.storageMask >> e.slot & 1)))
-            return false;
     }
     if ((bound & pipeline.storageMask) != pipeline.storageMask)
         return false;

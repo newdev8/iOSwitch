@@ -91,8 +91,7 @@ int main(int argc, char **argv)
         std::vector<gm20b::EmitRegister> made;
         std::string why;
         const gm20b::EmitProgram none, &fragment = gm20b::pixelStage(pipes[i]) ? info[pipes[i].fs] : none;
-        if (!gm20b::emitState(pack.string(pipes[i].keyString), info[pipes[i].vs], fragment, made, why, nullptr,
-                              pipes[i].flags & gm20b::PipelineTwoPlane)) {
+        if (!gm20b::emitState(pack.string(pipes[i].keyString), info[pipes[i].vs], fragment, made, why)) {
             if (!unparsed++)
                 printf("emitcheck: %s\n", why.c_str());
             continue;

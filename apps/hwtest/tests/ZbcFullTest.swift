@@ -6,10 +6,9 @@ import Metal
 /// The GPU's ZBC colour table filling up (drivers/TegraGM20BMetal/zbc.h: 15 colour entries, every
 /// process's, never emptied; comp.cpp zbcMake): 16 opaque BGRA8 colours of exact codes no other test clears to,
 /// each cleared three times in full over a private 512x512 target on compressed memory (the third clear asks for the
-/// entry). Its answers come from the compression thread after its make pass, which no event marks, so the test waits
-/// for two passes of that thread, each making Depth16Unorm memory of its own (CompressionSettled; `drained` 1): the
-/// second pass's event comes after the first pass's ZBC asks, which began after every clear's ask was queued. Then each
-/// colour is cleared once more and read back. Judged: every texel of each colour's third and fourth clear its codes
+/// entry). The compression thread answers the asks; the test waits for its settled event, which comes once every entry
+/// asked is added or refused (CompressionSettled; `drained` 1, 0 where the facade has no event). Then each colour is
+/// cleared once more and read back. Judged: every texel of each colour's third and fourth clear its codes
 /// (`pixels_wrong` 0); where drained, the table answered every colour this process had not asked before (`zbc_added` +
 /// `zbc_full` = `asked_want`: 16 on the process's first run, 0 after) and refused at least one of them (`zbc_full` >=
 /// 1: the table holds 15, its boot entries among them). Reported: zbc_hits, full_lines (this process's "table is full"
@@ -111,16 +110,11 @@ struct ZbcFullTest: HWTest {
         return stride(from: 0, to: read.count, by: 4).filter { read[$0 ..< $0 + 4].elementsEqual(want) == false }.count
     }
 
-    /// Two passes of the compression thread, each making memory nothing made before holds: false where a texture found
-    /// memory already made (nothing asked, so no pass to wait for)
+    /// The compression thread settled: every ZBC entry asked so far added or refused; false where the facade has no
+    /// event to wait for
     static func drain(_ gpu: GPU) async throws -> Bool {
-        var held: [MTLTexture] = []
-        for (width, height) in [(784, 520), (912, 608)] {
-            let texture = try gpu.texture(.depth16Unorm, width, height, usage: [.renderTarget, .shaderRead])
-            guard CompressionSettled.comptags(gpu.device, texture) == 0 else { return false }
-            held.append(texture)
-            try await CompressionSettled.settle(gpu.device)
-        }
-        return held.count == 2
+        let settled = await CompressionSettled.wait(gpu.device)
+        if let failure = settled.failure { throw failure }
+        return settled != .absent
     }
 }

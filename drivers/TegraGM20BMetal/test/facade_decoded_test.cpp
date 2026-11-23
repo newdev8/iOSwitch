@@ -7,6 +7,7 @@
 // completed).
 #include "facade_harness.h"
 #include "../device_answers.h"
+#include "../TegraGM20BMetalDecoded.h"
 #include "bazel/testing/fresh_process.h"
 
 #include <gtest/gtest.h>
@@ -161,6 +162,43 @@ void uploadsAreDecodedByThePacksState()
         << "the whole level: drawn by a decode state, which this pack lacks";
 }
 
+// What HW Test's decode cost and lifetime tests read (debug builds): switchMetalMemory's textures holds a decoded
+// texture's image and kept blocks, and its view of another form's image, while they live, and is back where it began
+// once they go (the view's once the blit that made its image completed); switchMetalCounters' rings_outgrown is the
+// device's count of rings a command buffer outgrew
+void debugKeysCountTexturesAndRings()
+{
+    id<MTLDevice> device = open(writePack(packKey(MTLPixelFormatBGRA8Unorm)));
+    ASSERT_TRUE(device != nil);
+    const auto textures = [&] {
+        return [memory(device)[@"textures"] unsignedLongLongValue];
+    };
+    const MTLTextureUsage usage = MTLTextureUsageShaderRead | MTLTextureUsagePixelFormatView;
+    const uint64_t before = textures();
+    uint64_t held = 0;
+    @autoreleasepool {
+        id<MTLTexture> narrow = made(device, 203, 32, 32, true, MTLStorageModePrivate, usage);
+        ASSERT_TRUE(narrow != nil);
+        held = textures();
+        EXPECT_GT(held, before) << "its image and its kept blocks";
+    }
+    EXPECT_EQ(textures(), before) << "its image and kept blocks went with it";
+    @autoreleasepool {
+        id<MTLTexture> narrow = made(device, 203, 32, 32, true, MTLStorageModePrivate, usage);
+        ASSERT_TRUE(narrow != nil);
+        id<MTLTexture> codes = [narrow newTextureViewWithPixelFormat:MTLPixelFormat(185)];
+        ASSERT_TRUE(codes != nil);
+        EXPECT_GT(textures(), held) << "the view's image of its own";
+    }
+    id<MTLCommandBuffer> after = [gm20bDecodeQueue(device) commandBuffer];
+    [after commit];
+    [after waitUntilCompleted];
+    EXPECT_EQ(textures(), before) << "the family went with its last reference";
+    const uint64_t rings = [counters(device)[@"rings_outgrown"] unsignedLongLongValue];
+    gRM->raw->stats.ringsOutgrown += 3;
+    EXPECT_EQ([counters(device)[@"rings_outgrown"] unsignedLongLongValue], rings + 3);
+}
+
 TEST(GM20BFacadeDecoded, DecodedTexturesAreMadeAsAsked)
 {
     switch_ios::test::ExpectPassesInFreshProcess(decodedTexturesAreMadeAsAsked);
@@ -179,6 +217,11 @@ TEST(GM20BFacadeDecoded, GetBytesGivesKeptBlocksBack)
 TEST(GM20BFacadeDecoded, UploadsAreDecodedByThePacksState)
 {
     switch_ios::test::ExpectPassesInFreshProcess(uploadsAreDecodedByThePacksState);
+}
+
+TEST(GM20BFacadeDecoded, DebugKeysCountTexturesAndRings)
+{
+    switch_ios::test::ExpectPassesInFreshProcess(debugKeysCountTexturesAndRings);
 }
 
 }  // namespace

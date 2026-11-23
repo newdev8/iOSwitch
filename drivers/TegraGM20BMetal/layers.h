@@ -4,8 +4,8 @@
 // in every layer (CLEAR_SURFACE's RT_ARRAY_INDEX, NVK's layer loop macro). What it stores needs no work of its own: the
 // targets are the textures' own memory, or for an attachment of fewer layers than the pass (a linear one has one) a
 // backing of the pass's layers whose own layers the copy engine fills and drains (CommandBuffer::render): Apple's GPU
-// draws every layer an attachment has and drops the rest. Over gm20b::PassDesc and gm20b::Texture (gpu.h), or any types
-// shaped alike.
+// draws every layer an attachment has and drops the rest. Over gm20b::PassDesc (pass_desc.h) and gm20b::Texture
+// (resources.h), or any types shaped alike.
 #pragma once
 #include <algorithm>
 #include <cstdint>

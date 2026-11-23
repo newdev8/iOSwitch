@@ -173,7 +173,6 @@ TESTS: dict[str, bool] = {
             'gpu.gm20b.mipmap_3d',
             'gpu.gm20b.shadow_stencil',
             'gpu.gm20b.shadow_stencil_depth',
-            'gpu.gm20b.xr_shadow',
             'gpu.gm20b.tess_root_table',
             'gpu.gm20b.visibility',
             'gpu.gm20b.fixed_blend_rule',
@@ -203,6 +202,10 @@ TESTS: dict[str, bool] = {
             'gpu.gm20b.zeta_move',
             'gpu.gm20b.zeta_kept',
             'gpu.gm20b.zc_view_formats',
+            'gpu.gm20b.zc_zeta_layers',
+            'gpu.gm20b.zc_zeta_shadow',
+            'gpu.gm20b.zc_mixed',
+            'gpu.gm20b.zc_stencil_criterion',
             'gpu.gm20b.resolve_twod',
             'gpu.gm20b.fill_texture',
             'gpu.gm20b.storage_compressed',
@@ -354,6 +357,7 @@ TESTS: dict[str, bool] = {
             'gpu.gm20b.bgra10xrsrgb_empty_pass',
             'gpu.gm20b.storage_forms',
             'gpu.gm20b.xr_blend_routes',
+            'gpu.gm20b.xr_stand_in',
             'gpu.gm20b.planar_sampled_target',
             'gpu.gm20b.ycbcr_target_shapes',
             'gpu.gm20b.xr_two_planes_any_elements',
@@ -759,21 +763,10 @@ OPEN: dict[str, str] = {
         'built, unjudged: a kernel reading an XR texel buffer through its stand-in after a write in the same compute '
         'encoder reached it splits the encoder there, refills the pool and redraws the stand-in'
     ),
-    'gpu.gm20b.plain_rows_blit_tiles': (
-        'a copy into plain texels over overlapping rows stores them in row order on raw; Metal stores 16-byte texels '
-        'by 32x32 tiles, the last tile row first'
-    ),
     'gpu.gm20b.plain_rows_quarter_turns': (
-        "a quarter-turned pass over overlapping plain rows stores by the frame's 64-wide columns on raw; Metal keeps "
-        'other rows (no one tile order fits)'
-    ),
-    'gpu.gm20b.ms_buffer_copy': (
-        'a 4-sample texture copied to a buffer at the full row of its samples is skipped (call.blit) and writes '
-        "nothing; Metal writes it texel-major, each texel's samples in order"
-    ),
-    'gpu.gm20b.integer_mipmaps': (
-        'generateMipmapsForTexture: of an integer format is skipped (call.blit) and leaves the levels; Metal makes '
-        "each level the previous level's texel at (2x + 1, 2y + 1)"
+        "an M4 Max stores a quarter-turned pass's frame tiles concurrently: no fixed order fits the rows it keeps "
+        "(40x40 fits the upper tile row later; 72x40 to 136x100 fit the driver's order best and still miss, and the "
+        'elements ten runs agree on change between runs), so raw keeps the order the larger shapes fit'
     ),
 }
 

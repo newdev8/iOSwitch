@@ -61,35 +61,6 @@ void fillUnit(SwitchMetalTexture *t, const uint8_t packed[16], uint32_t size, gm
         f.texel[from + k] = size ? packed[k % size] : 0;
 }
 
-// The integer formats, which Metal's validation stops generateMipmapsForTexture: of (m2v mipmap_plan.rs)
-bool integerFormat(uint32_t format)
-{
-    switch (format) {
-    case 13:
-    case 14:
-    case 23:
-    case 24:
-    case 33:
-    case 34:
-    case 53:
-    case 54:
-    case 63:
-    case 64:
-    case 73:
-    case 74:
-    case 91:
-    case 103:
-    case 104:
-    case 113:
-    case 114:
-    case 123:
-    case 124:
-        return true;
-    default:
-        return false;
-    }
-}
-
 // Whether encodeMipmaps has an engine for every step of `t`'s chain: the 2D engine's surface format, or a pack state the
 // device's pack holds
 bool mipRouted(SwitchMetalTexture *t)
@@ -202,10 +173,19 @@ void recordFill(__unsafe_unretained SwitchMetalCommandBuffer *cb, id<MTLTexture>
                           MTLCommandBufferErrorInternal);
         return;
     }
-    if (integerFormat(x->_raw.format) || x->_raw.blockW > 1 || x->_raw.blockH > 1)
-        return skipInvalidBlit("generateMipmapsForTexture:",
-                               "of a format Metal does not filter (integer or compressed)");
-    if (!mipRouted(x)) {
+    if (x->_raw.blockW > 1 || x->_raw.blockH > 1)
+        return skipInvalidBlit("generateMipmapsForTexture:", "of a compressed format, which Metal does not filter");
+    if (gm20b::fx::integerFormat(x->_raw.format) && x->_raw.type == gm20b::fx::kTexThreeD) {
+        SWITCH_REFUSE(
+            "gm20b", "mipmaps.state",
+            "generateMipmapsForTexture: of a 3D texture of integer format %u: no engine of the device takes a "
+            "level's planes from the level above's (the 2D engine moves one plane): MTLCommandBufferErrorInternal",
+            x->_raw.format);
+        failCommandBuffer(_cb, @"generateMipmapsForTexture: no engine makes a 3D integer texture's levels",
+                          MTLCommandBufferErrorInternal);
+        return;
+    }
+    if (!gm20b::fx::integerFormat(x->_raw.format) && !mipRouted(x)) {
         SWITCH_REFUSE("gm20b", "mipmaps.state",
                       "generateMipmapsForTexture: of format %u: the device's pack holds no mip state for it: "
                       "MTLCommandBufferErrorInternal",

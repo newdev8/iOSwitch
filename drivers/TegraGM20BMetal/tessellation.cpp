@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// A tessellation state's draws (gpu.h RenderEncoder): each patch one control point of a PATCH_LIST of one (m2v
+// A tessellation state's draws (render_encoder.h): each patch one control point of a PATCH_LIST of one (m2v
 // link/tessellation), drawn by the hardware tessellator through the state's control and evaluation programs. The control
 // stage reads the encoder's factor buffer and the draw's patch and control-point index buffers through set 0
 // (EntryTessBuffer), and its push words (PackPipeline::controlWord) as m2v's binder writes them (bind/graphics.rs

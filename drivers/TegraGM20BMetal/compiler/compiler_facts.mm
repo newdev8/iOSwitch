@@ -77,13 +77,17 @@ NmbOfflineFunction *functionOf(const NmbOfflineLibrary *library, const gm20b::Re
                                                 uint32_t(constants.size()));
 }
 
-// vertexAttributes (`stageInput` false) or stageInputAttributes as the translator answers them; nullopt for nil
-gm20b::AttributeList attributesOf(const NmbOfflineFunction *f, bool stageInput)
+// vertexAttributes (`stageInput` false) or stageInputAttributes as the translator answers them into `list` (nullopt for
+// nil); false with `why` where the translator answers none
+bool attributesOf(const NmbOfflineFunction *f, bool stageInput, gm20b::AttributeList &list, std::string &why)
 {
+    const char *which = stageInput ? "stageInputAttributes" : "vertexAttributes";
     const int64_t count = stageInput ? nmb_offline_function_stage_input_attribute_count(f)
                                      : nmb_offline_function_vertex_attribute_count(f);
+    if (count < 0 && *nmb_last_error())
+        return why = std::string("the translator answers no ") + which + ": " + nmb_last_error(), false;
     if (count < 0)
-        return std::nullopt;
+        return list = std::nullopt, true;
     std::vector<gm20b::FunctionAttributeTag> out;
     for (uint32_t i = 0; i < uint32_t(count); i++) {
         char name[256];
@@ -91,7 +95,9 @@ gm20b::AttributeList attributesOf(const NmbOfflineFunction *f, bool stageInput)
         const size_t named = stageInput ? nmb_offline_function_stage_input_attribute(f, i, name, sizeof name, info)
                                         : nmb_offline_function_vertex_attribute(f, i, name, sizeof name, info);
         if (!named)
-            return std::nullopt;
+            return why = std::string("the translator answers no ") + which + " " + std::to_string(i) + ": " +
+                         nmb_last_error(),
+                   false;
         gm20b::FunctionAttributeTag a;
         a.name = name;
         a.index = uint8_t(info[0]);
@@ -101,7 +107,8 @@ gm20b::AttributeList attributesOf(const NmbOfflineFunction *f, bool stageInput)
         a.controlPointData = info[4];
         out.push_back(std::move(a));
     }
-    return out;
+    list = std::move(out);
+    return true;
 }
 
 // The stage input as the offline descriptor takes it (TegraGM20BMetalOffline.mm computeDescriptor)
@@ -219,10 +226,11 @@ int32_t makeAttributes(const Prepared &p, const std::string &systemRoot, std::st
         if (!stages.make(p.request, systemRoot, why))
             return TegraGM20BCompileUnavailable;
         const NmbOfflineFunction *function = stages.function(0);
-        const std::string blob =
-            gm20b::encodeAttributeLists(attributesOf(function, false), attributesOf(function, true));
-        entry = gm20b::encodeReflectionEntry(p.key, &blob, why);
-        return TegraGM20BCompileMade;
+        gm20b::AttributeList vertex, stageInput;
+        const bool made = attributesOf(function, false, vertex, why) && attributesOf(function, true, stageInput, why);
+        const std::string blob = gm20b::encodeAttributeLists(vertex, stageInput);
+        entry = gm20b::encodeReflectionEntry(p.key, made ? &blob : nullptr, why);
+        return made ? TegraGM20BCompileMade : TegraGM20BCompileRefused;
     }
 }
 

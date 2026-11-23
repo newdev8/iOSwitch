@@ -20,9 +20,15 @@ TEST(TranslateBudget, EveryCompileRunsWithoutADeadline)
     const std::string translate = SourceText("../translate/NativeMetalTranslate.rs");
     EXPECT_THAT(Body(translate, "pub fn compile_budget() -> metal2vulkan::Budget"),
                 HasSubstr("metal2vulkan::Budget::default()"));
-    for (const char *file : {"../translate/NativeMetalDirect.rs", "../translate/NativeMetalDirectCompute.rs",
-                             "../translate/NativeMetalDirectTess.rs", "../translate/NativeMetalOffline.rs",
-                             "../translate/NativeMetalReflection.rs", "../translate/NativeMetalTranslate.rs"}) {
+    for (const char *file :
+         {"../translate/NativeMetalDirect.rs", "../translate/NativeMetalDirectAbi.rs",
+          "../translate/NativeMetalDirectCompute.rs", "../translate/NativeMetalDirectComputeAbi.rs",
+          "../translate/NativeMetalDirectComputeBinds.rs", "../translate/NativeMetalDirectComputeWords.rs",
+          "../translate/NativeMetalDirectComputeWrites.rs", "../translate/NativeMetalDirectDraw.rs",
+          "../translate/NativeMetalDirectLayout.rs", "../translate/NativeMetalDirectProbe.rs",
+          "../translate/NativeMetalDirectTess.rs", "../translate/NativeMetalDirectWrites.rs",
+          "../translate/NativeMetalOffline.rs", "../translate/NativeMetalReflection.rs",
+          "../translate/NativeMetalTranslate.rs"}) {
         const std::string text = SourceText(file);
         EXPECT_THAT(text, Not(HasSubstr("Budget::standard"))) << file;
         EXPECT_THAT(text, Not(HasSubstr("with_deadline"))) << file;

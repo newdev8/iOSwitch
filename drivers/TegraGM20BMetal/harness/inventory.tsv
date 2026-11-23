@@ -1,7 +1,7 @@
 # raw's API inventory, written by harness/selcover (SELCOVER_WRITE=1; selcover_inventory.h says what each
 # column holds): container, item, selector, m2v, sent by, raw
 # m2v's items: base 3 m2v 1 none 32 raw 343 read 358 refused 163 unread 135 zero 22
-# sent selectors: base 77 m2v 7 none 7 raw 559 refused 56 zero 109
+# sent selectors: base 75 m2v 7 none 7 raw 561 refused 56 zero 109
 MTLArgument	access	access	I	-	read
 MTLArgument	active	isActive	I	-	read
 MTLArgument	arrayLength	arrayLength	I	-	read
@@ -528,8 +528,8 @@ MTLDevice	-	supportsExtendedXR10Formats	-	21H461,24B119	raw
 MTLDevice	-	supportsFP8	-	24B119	base
 MTLDevice	-	supportsFeatureSet:	-	21H461,24B119	raw
 MTLDevice	-	supportsFloat16BCubicFiltering	-	21H461,24B119	raw
-MTLDevice	-	supportsFunctionPointers	-	24B119	base
-MTLDevice	-	supportsFunctionPointersFromRender	-	24B119	base
+MTLDevice	-	supportsFunctionPointers	-	24B119	raw
+MTLDevice	-	supportsFunctionPointersFromRender	-	24B119	raw
 MTLDevice	-	supportsLayeredRendering	-	21H461,24B119	base
 MTLDevice	-	supportsLossyCompression	-	24B119	base
 MTLDevice	-	supportsMSAADepthResolve	-	21H461,24B119	base

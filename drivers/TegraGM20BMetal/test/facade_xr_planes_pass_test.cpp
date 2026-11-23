@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
-// Passes into RGB10A8_2P_XR10 (550) colours that cannot all take their two planes (TegraGM20BMetalEncoder.mm xrPlanesPassOf): no
-// free colour index for an alpha plane, or a device-made 550 beside a surface's, whose pass texels an M4 Max keeps
-// (HW Test gpu.gm20b.xr_planes_images, made case); and a multisampled BGRA10_XR resolved by the pack's state over its codes. Each runs
-// on the driver, nothing of it on m2v.
+// Passes into RGB10A8_2P_XR10 (550) colours, over a surface's two planes or a device-made texture, and a multisampled
+// BGRA10_XR resolved by its codes' mean: each renders through its RGBA16Float stand-in (format_standin.h), on the driver,
+// nothing of it on m2v.
 #include "facade_harness.h"
+#include "../format_standin.h"
 #include "../samples.h"
 #include "../xr_pools.h"
 #include "bazel/testing/fresh_process.h"
@@ -81,17 +81,31 @@ void expectRaw(id<MTLDevice> device, MTLRenderPassDescriptor *p)
     EXPECT_EQ(path(cb), "gm20b");
 }
 
-id<MTLDevice> openWithPlaneImages()
+using States = std::vector<std::pair<std::string, MTLPixelFormat>>;
+
+// The load and store states of 550 over a surface's two planes and of a device-made 550 (pack/xr_target.metal), and the
+// surface texture's sampling conversion, with `more`
+States standInStates(States more = {})
 {
-    return open(writePack(packKey(MTLPixelFormatBGRA8Unorm), {}, {}, true, "",
-                          {{"raw.xr.xr_planes_merge_frag", MTLPixelFormatRG32Uint},
-                           {"raw.xr.xr_planes_split_frag", MTLPixelFormatR32Uint}}));
+    using gm20b::XrStep;
+    States states = {{"raw.xr.xr_two_planes_frag", MTLPixelFormatRGBA16Float},
+                     {gm20b::xrTargetState(550, XrStep::Load, 1, true), MTLPixelFormatRGBA16Float},
+                     {gm20b::xrTargetState(550, XrStep::Store, 1, true), MTLPixelFormatR32Uint},
+                     {gm20b::xrTargetState(550, XrStep::Load), MTLPixelFormatRGBA16Float},
+                     {gm20b::xrTargetState(550, XrStep::Store), MTLPixelFormatRG32Uint}};
+    states.insert(states.end(), more.begin(), more.end());
+    return states;
 }
 
-// Seven BGRA8 colours and a surface's 550 leave its alpha plane no index: the 550 is drawn in an image of its planes
-void a550WithNoFreeIndexIsDrawnInOneImage()
+id<MTLDevice> openWithStandIns(States more = {})
 {
-    id<MTLDevice> device = openWithPlaneImages();
+    return open(writePack(packKey(MTLPixelFormatBGRA8Unorm), {}, {}, true, "", standInStates(std::move(more))));
+}
+
+// A surface's 550 after seven BGRA8 colours, at the last colour index: its stand-in takes that index alone
+void aSurface550AtTheLastIndexRendersThroughItsStandIn()
+{
+    id<MTLDevice> device = openWithStandIns();
     ASSERT_TRUE(device != nil);
     MTLRenderPassDescriptor *p = [MTLRenderPassDescriptor renderPassDescriptor];
     for (NSUInteger c = 0; c < 7; c++) {
@@ -102,15 +116,15 @@ void a550WithNoFreeIndexIsDrawnInOneImage()
     }
     p.colorAttachments[7].texture = planesTexture(device);
     ASSERT_TRUE(p.colorAttachments[7].texture != nil);
-    p.colorAttachments[7].loadAction = MTLLoadActionLoad;
+    p.colorAttachments[7].loadAction = MTLLoadActionClear;
     p.colorAttachments[7].storeAction = MTLStoreActionStore;
     expectRaw(device, p);
 }
 
-// A device-made 550 beside a surface's: a 550 of one image beside it, so the surface's is drawn in an image of its planes
+// A device-made 550 beside a surface's: each renders through a stand-in of its own and is stored in its own form
 void aDeviceMade550BesideASurfacesIsRaws()
 {
-    id<MTLDevice> device = openWithPlaneImages();
+    id<MTLDevice> device = openWithStandIns();
     ASSERT_TRUE(device != nil);
     MTLRenderPassDescriptor *p = [MTLRenderPassDescriptor renderPassDescriptor];
     p.colorAttachments[0].texture = planesTexture(device);
@@ -123,10 +137,35 @@ void aDeviceMade550BesideASurfacesIsRaws()
     expectRaw(device, p);
 }
 
+// A pass that clears a BGR10_XR and a BGRA10_XR target and draws nothing writes their codes through the clear registers,
+// Metal's straight route on memory it compresses: no stand-in, so a pack without their states completes it
+void aDrawlessClearTakesTheClearRegisters()
+{
+    id<MTLDevice> device = open(writePack(packKey(MTLPixelFormatBGRA8Unorm)));
+    ASSERT_TRUE(device != nil);
+    MTLRenderPassDescriptor *p = [MTLRenderPassDescriptor renderPassDescriptor];
+    p.colorAttachments[0].texture = plain(device, MTLPixelFormatBGR10_XR);
+    p.colorAttachments[1].texture = plain(device, MTLPixelFormatBGRA10_XR);
+    ASSERT_TRUE(p.colorAttachments[0].texture != nil && p.colorAttachments[1].texture != nil);
+    for (NSUInteger c = 0; c < 2; c++) {
+        p.colorAttachments[c].loadAction = MTLLoadActionClear;
+        p.colorAttachments[c].clearColor = MTLClearColorMake(0.5, -0.25, 1.2, 0.75);
+        p.colorAttachments[c].storeAction = MTLStoreActionStore;
+    }
+    expectRaw(device, p);
+}
+
+// A multisampled BGRA10_XR resolves from its stand-in by the mean of its samples' store codes into a one-sample stand-in
+// of the resolve texture, which the pass stores into its codes
 void aMultisampledBgra10XrResolvesByItsState()
 {
+    using gm20b::XrStep;
     id<MTLDevice> device = open(writePack(packKey(MTLPixelFormatBGRA8Unorm), {}, {}, true, "",
-                                          {{gm20b::resolveState(552, 4), MTLPixelFormatRGBA16Uint}}));
+                                          {{gm20b::xrTargetState(552, XrStep::Load, 4), MTLPixelFormatRGBA16Float},
+                                           {gm20b::xrTargetState(552, XrStep::Store, 4), MTLPixelFormatRGBA16Uint},
+                                           {gm20b::xrTargetState(552, XrStep::Load), MTLPixelFormatRGBA16Float},
+                                           {gm20b::xrTargetState(552, XrStep::Store), MTLPixelFormatRGBA16Uint},
+                                           {gm20b::xrTargetState(552, XrStep::Resolve), MTLPixelFormatRGBA16Float}}));
     ASSERT_TRUE(device != nil);
     MTLTextureDescriptor *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA10_XR
                                                                                  width:kSide
@@ -188,14 +227,13 @@ std::vector<uint64_t> copiesInto(size_t first, std::vector<uint32_t> *pitches = 
 
 // RGB10A8_2P_XR10 over words of rows 64 for 32 texels and alpha bytes of rows 16 for 32: an M4 Max makes it, reads each
 // row at its plane's pitch, and its pass stores each byte from the row overlap_order.h names (five runs alike). A
-// Clear pass renders both planes in their pools, then each plane's bytes are drawn from its pool by the pack's overlap
-// state into a backing the copy engine drains into the rows (rows 64 and 16 bytes apart are no linear render target)
+// Clear pass's stand-in is stored into both planes' pools, then each plane's bytes are drawn from its pool by the
+// pack's overlap state into a backing the copy engine drains into the rows (rows 64 and 16 bytes apart are no linear
+// render target)
 void planesWhoseRowsOverlapAreStoredFromTheirPools()
 {
-    id<MTLDevice> device = open(writePack(packKey(MTLPixelFormatBGRA8Unorm), {}, {}, true, "",
-                                          {{"raw.xr.xr_two_planes_frag", MTLPixelFormatRGBA16Float},
-                                           {"raw.ycbcr_store.ycbcr_overlap_r32ui_frag", MTLPixelFormatR32Uint},
-                                           {"raw.ycbcr_store.ycbcr_overlap_r8_frag", MTLPixelFormatR8Unorm}}));
+    id<MTLDevice> device = openWithStandIns({{"raw.ycbcr_store.ycbcr_overlap_r32ui_frag", MTLPixelFormatR32Uint},
+                                             {"raw.ycbcr_store.ycbcr_overlap_r8_frag", MTLPixelFormatR8Unorm}});
     ASSERT_TRUE(device != nil);
     NSMutableArray *planes = [NSMutableArray array];
     // IOSurfaceCreate makes no plane of 32 four-byte elements in rows of 64: the words' plane is declared of two-byte
@@ -246,8 +284,7 @@ void planesWhoseRowsOverlapAreStoredFromTheirPools()
 // without that state fails the command buffer
 void crossingPlanesCleared(bool state)
 {
-    std::vector<std::pair<std::string, MTLPixelFormat>> states = {
-        {"raw.xr.xr_two_planes_frag", MTLPixelFormatRGBA16Float}};
+    States states = standInStates();
     if (state)
         states.push_back({gm20b::kOverlapPlanesState, MTLPixelFormatR8Uint});
     id<MTLDevice> device = open(writePack(packKey(MTLPixelFormatBGRA8Unorm), {}, {}, true, "", states));
@@ -294,11 +331,10 @@ void crossingPlanesCleared(bool state)
 // RGB10A8_2P_XR10 8x8 over words of rows 32 at 0 and alpha bytes of rows 8 at 256: an M4 Max makes it, reads the alpha
 // rows 1 MiB apart and stores them 16 apart (m2v-textures11 probes/h1/rows550.txt m3), and a pass that loads the planes and
 // draws nothing stores none (m2v-textures12 probes/f2/targets-full.txt #168, #169). A Clear pass stores the alpha pool at
-// rows 16 apart; a Load pass with no draw fills the pools and copies nothing back into the planes
+// rows 16 apart; a Load pass with no draw neither fills the pools nor copies anything back into the planes
 void planesOfRowsUnderSixteenBytesStoreSixteenApart()
 {
-    id<MTLDevice> device = open(writePack(packKey(MTLPixelFormatBGRA8Unorm), {}, {}, true, "",
-                                          {{"raw.xr.xr_two_planes_frag", MTLPixelFormatRGBA16Float}}));
+    id<MTLDevice> device = openWithStandIns();
     ASSERT_TRUE(device != nil);
     NSMutableArray *planes = [NSMutableArray array];
     for (unsigned bytes : {4u, 1u})
@@ -346,7 +382,7 @@ void planesOfRowsUnderSixteenBytesStoreSixteenApart()
     copies = copiesInto(first);
     for (const gm20b::Texture *plane : {t->_raw.luma, t->_raw.chroma})
         EXPECT_EQ(std::find(copies.begin(), copies.end(), plane->va), copies.end()) << "nothing stored back";
-    EXPECT_NE(std::find(copies.begin(), copies.end(), alpha.sampled->va), copies.end()) << "the pools loaded";
+    EXPECT_EQ(std::find(copies.begin(), copies.end(), alpha.sampled->va), copies.end()) << "no pool loaded";
     CFRelease(surface);
 }
 
@@ -356,9 +392,7 @@ void planesOfRowsUnderSixteenBytesStoreSixteenApart()
 // through both pools, turned, and a Clear pass draws their span through the pack's overlap planes state
 void turnedPlanesOfRowsUnderSixteenBytes()
 {
-    id<MTLDevice> device = open(writePack(packKey(MTLPixelFormatBGRA8Unorm), {}, {}, true, "",
-                                          {{"raw.xr.xr_two_planes_frag", MTLPixelFormatRGBA16Float},
-                                           {gm20b::kOverlapPlanesState, MTLPixelFormatR8Uint}}));
+    id<MTLDevice> device = openWithStandIns({{gm20b::kOverlapPlanesState, MTLPixelFormatR8Uint}});
     ASSERT_TRUE(device != nil);
     NSMutableArray *planes = [NSMutableArray array];
     for (unsigned bytes : {4u, 1u})
@@ -435,9 +469,14 @@ TEST(GM20BFacadeXrPlanesPass, AMultisampledBgra10XrResolvesByItsState)
     switch_ios::test::ExpectPassesInFreshProcess(aMultisampledBgra10XrResolvesByItsState);
 }
 
-TEST(GM20BFacadeXrPlanesPass, A550WithNoFreeIndexIsDrawnInOneImage)
+TEST(GM20BFacadeXrPlanesPass, ADrawlessClearOfBgr10XrAndBgra10XrTakesTheClearRegisters)
 {
-    switch_ios::test::ExpectPassesInFreshProcess(a550WithNoFreeIndexIsDrawnInOneImage);
+    switch_ios::test::ExpectPassesInFreshProcess(aDrawlessClearTakesTheClearRegisters);
+}
+
+TEST(GM20BFacadeXrPlanesPass, ASurface550AtTheLastIndexRendersThroughItsStandIn)
+{
+    switch_ios::test::ExpectPassesInFreshProcess(aSurface550AtTheLastIndexRendersThroughItsStandIn);
 }
 
 TEST(GM20BFacadeXrPlanesPass, ADeviceMade550BesideASurfacesIsRaws)

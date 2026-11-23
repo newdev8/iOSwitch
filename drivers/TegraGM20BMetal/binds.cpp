@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// See gpu.h (RenderEncoder's buffer, viewport, scissor and state setters).
+// See render_encoder.h (RenderEncoder's buffer, viewport, scissor and state setters).
 #include "lock.h"
 #include "gpu.h"
 
@@ -162,7 +162,6 @@ void RenderEncoder::setBlendColor(const float rgba[4])
     if (memcmp(v, blendColor_, sizeof v)) {
         memcpy(blendColor_, v, sizeof v);
         blendColorDirty_ = true;
-        blendWordsDirty_ = true;
         spillDirty_ = true;
     }
 }

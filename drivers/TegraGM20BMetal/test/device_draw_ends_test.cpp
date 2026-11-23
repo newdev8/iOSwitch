@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
-// What gm20b::Device names a draw it refuses at encode (gpu.h Refusal), each id one ending of TegraGM20BMetalDrawErrors.mm
+// What gm20b::Device names a draw it refuses at encode (draw_refusal.h), each id one ending of TegraGM20BMetalDrawErrors.mm
 // drawFailed: a storage form in a pass of another sample count (the client's) or of another texel size (the driver's),
-// a shadow variant in a pass with no shadow, a sampler header the range did not make, and a shader depth/stencil test
+// a sampler header the range did not make, and a shader depth/stencil test
 // of an aspect or sample count the pass lacks (the client's) or of a Depth16Unorm its pass left unconverted (the
 // driver's). A planar texture sampled by comparison draws through its sampler's compare header under the texture's map.
 #include "device_harness.h"
@@ -16,7 +16,7 @@ namespace {
 
 using Header = std::array<uint32_t, 8>;
 
-constexpr uint32_t kRGBA8 = 70, kRGBA16Float = 115, kBGR10XR = 554, kDepth16 = 250, kDepth32Float = 252, kTriangle = 3;
+constexpr uint32_t kRGBA8 = 70, kRGBA16Float = 115, kDepth16 = 250, kDepth32Float = 252, kTriangle = 3;
 constexpr uint32_t kR8Uint = 13, kR32Float = 100;  // VkFormat
 constexpr uint32_t kR32UintWord0 = 0x6014920f;     // a storage view of 4-byte texels (device_layered_fetch_test)
 constexpr uint32_t kShadowWord = 5;
@@ -189,23 +189,6 @@ TEST_F(DeviceDrawEnds, AStorageFormInAPassOfAnotherSampleCountIsTheClientsAndOfA
     EXPECT_FALSE(texels.drawn);
     EXPECT_EQ(texels.refusal.id, gm20b::RefStorageView) << texels.why;
     EXPECT_EQ(texels.refusal.b, kRGBA16Float);
-}
-
-TEST_F(DeviceDrawEnds, AShadowVariantInAPassWithNoShadowIsTheDrivers)
-{
-    gm20b::RuntimeRecord r = recordOf(0xde03, "samples=1 c0=554 ds=0/0 ");
-    r.pipeline.flags = gm20b::PipelinePushMetadata;
-    r.pipeline.setBytes = 16;
-    gm20b::setEntryCount(r.pipeline, 1);
-    r.pipeline.entry[0] = {0, gm20b::EntryXrShadow, 2, 0, 0, 0, 0};
-    r.blob = {0x1a00, 0x1111};
-    gm20b::Pipeline *pl = made(r);
-    ASSERT_NE(pl, nullptr);
-    gm20b::Texture extended;
-    ASSERT_TRUE(dev.createTexture(32, 32, kBGR10XR, extended));
-    const Drawn d = draw(pl, onto(extended));
-    EXPECT_FALSE(d.drawn);
-    EXPECT_EQ(d.refusal.id, gm20b::RefXrShadow) << d.why;
 }
 
 // Repeat on both axes, which a converted 4:2:0 texture's address map (1) clamps to the edge

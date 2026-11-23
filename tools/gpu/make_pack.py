@@ -78,9 +78,10 @@ YCBCR_STAND_IN = 125
 # ycbcrStandInFormat: the packed planes' R32Float and RG32Float, of their fragments' one or two components
 STAND_INS = {588: 55, 589: 105}
 # format_standin.h formatStandIn: the formats the GM20B renders none of that a stand-in of another
-# format renders, and those of them that hold alpha (formatHoldsAlpha)
-FORMAT_STAND_INS = {11: 71, 31: 71, 41: 125, 42: 125, 44: 125, 84: 70, 85: 71, 93: 125, 551: 115, 553: 115, 555: 115}
-HOLDS_ALPHA = frozenset({41, 42, 44, 84, 85, 551, 553})
+# format renders, and those of them that hold alpha (formatHoldsAlpha); not the extended-range ones (550 to 555), whose
+# states are the descriptor's own, which the translator lowers onto their stand-in
+FORMAT_STAND_INS = {11: 71, 31: 71, 41: 125, 42: 125, 44: 125, 84: 70, 85: 71, 93: 125}
+HOLDS_ALPHA = frozenset({41, 42, 44, 84, 85})
 # standin_blend.h alphaOneFactor: MTLBlendFactorDestinationAlpha, OneMinusDestinationAlpha and
 # SourceAlphaSaturated where the destination alpha is 1, of a colour blend and of an alpha blend
 ALPHA_ONE_RGB = {8: 1, 9: 0, 10: 0}

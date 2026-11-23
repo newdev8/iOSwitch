@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Each record of the built pack holds its own colour targets' registers, and none holds a target's separate alpha.
 
-The targets a record's draw writes are its key's colours and, in its two-plane form (PipelineTwoPlane), each
-RGB10A8_2P_XR10 colour's alpha target (mkpack.target_mask). Its blob holds every one of their SET_CT_WRITE (0x1a00),
+The targets a record's draw writes are its key's colours (mkpack.targets). Its blob holds every one of their SET_CT_WRITE (0x1a00),
 SET_BLEND (0x1360) and per-target blend (0x1e00 block) registers that varies across the pack, and no other target's: a
 register it leaves out is the previous draw's. Metal's blend always has separate alpha factors, so every target's
 SET_BLEND_PER_TARGET_SEPARATE_FOR_ALPHA (0x1e00 + 0x20 j) is 1 under every draw: no record holds one, and target 0's is
@@ -23,14 +22,12 @@ import mkpack
 import packfile
 
 PIPELINES, BASELINE, BLOB, STRINGS = 1, 3, 5, 6  # runtime/pack.h PackSection
-TWO_PLANE = 128  # PipelineTwoPlane
 SET_CT_WRITE, SEPARATE_FOR_ALPHA = 0x1A00, 0x1E00
 PACK = ''
 
 
 class Record(NamedTuple):
     key: str
-    two_plane: bool
     regs: dict[int, int]
 
 
@@ -48,17 +45,17 @@ def load(path: str) -> tuple[list[Record], dict[int, int]]:
     records = []
     for i in range(count):
         head = directlink.PIPELINE.unpack_from(data, sections[PIPELINES][0] + i * directlink.PIPELINE_BYTES)
-        key_at, blob_at, dwords, flags = strings + head[1], blob + 4 * head[4], head[5], head[12]
+        key_at, blob_at, dwords = strings + head[1], blob + 4 * head[4], head[5]
         key = data[key_at : data.index(b'\0', key_at)].decode()
         words = struct.unpack_from(f'<{dwords}I', data, blob_at)
-        records.append(Record(key, bool(flags & TWO_PLANE), dict(zip(words[0::2], words[1::2], strict=True))))
+        records.append(Record(key, dict(zip(words[0::2], words[1::2], strict=True))))
     at, size = sections[BASELINE]
     return records, dict(struct.iter_unpack('<II', data[at : at + size]))
 
 
 def drawn_targets(record: Record) -> int:
     """Give the targets a record's draw writes, bit j target j."""
-    return mkpack.target_mask(record.key, record.two_plane)
+    return mkpack.targets(record.key)
 
 
 def target_of(method: int) -> int | None:
@@ -75,13 +72,12 @@ def colour_writes(methods: set[int] | dict[int, int]) -> int:
 
 
 def described(records: list[Record], held: str) -> str:
-    """Give how many `records` there are, how many of them two-plane, and the first's key, targets and `held`."""
+    """Give how many `records` there are, and the first's key, targets and `held`."""
     if not records:
         return ''
     first = records[0]
-    two_plane = sum(1 for r in records if r.two_plane)
     return (
-        f'{len(records)} records ({two_plane} two-plane), the first {first.key[:120]!r} drawing targets '
+        f'{len(records)} records, the first {first.key[:120]!r} drawing targets '
         f'{drawn_targets(first):#010b} {held}: {held_by(first, held)}'
     )
 

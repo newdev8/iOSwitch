@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // A pass whose colour attachment is a turned surface plane (rotation.h): which passes the driver draws straight into the
-// plane, and the window-space state turned into the plane's. Over gm20b::PassDesc and gm20b::Texture (gpu.h), or any types
-// of the same fields.
+// plane, and the window-space state turned into the plane's. Over gm20b::PassDesc (pass_desc.h) and gm20b::Texture
+// (resources.h), or any types of the same fields.
 #pragma once
 #include <algorithm>
 #include <type_traits>

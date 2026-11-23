@@ -83,7 +83,6 @@ gm20b::RuntimeRecord madeUp(uint32_t n)
     r.pipeline.pushWords[n % 32] = n;
     if (n % 2) {
         r.pipeline.flags |= gm20b::PipelinePushMetadata;
-        r.pipeline.blendColorWord = 5;
         r.pipeline.halfBlendColorWord = 29;
         r.pipeline.pushMask |= 0xf0000ff0u;
     }
@@ -251,7 +250,7 @@ TEST(GM20BCache, ARecordOfAnEntryNoDrawCanWriteComesBackAsNone)
               gm20b::RecordCache::Found::Record);
     gm20b::RuntimeRecord slot = madeUp(2), kind = madeUp(2), stage = madeUp(2), offset = madeUp(2);
     slot.pipeline.entry[0].slot = gm20b::kStageBufferArguments;
-    kind.pipeline.entry[0].kind = uint8_t(gm20b::EntryXrShadow + 1);
+    kind.pipeline.entry[0].kind = uint8_t(gm20b::EntryTessBuffer + 1);
     stage.pipeline.entry[0].stage = 3;
     offset.pipeline.entry[0].offset = 256;
     for (const gm20b::RuntimeRecord *broken : {&slot, &kind, &stage, &offset})

@@ -43,22 +43,13 @@ inline gm20b::ProbeTextures probeTextures(const std::string &line, bool ours)
         {"f turn_depth", {MTLPixelFormatDepth32Float, 1}},
         {"f stencil_bits_", {MTLPixelFormatR32Uint, 1}},
         {"f fmt_store_", {MTLPixelFormatRGBA32Float, 1}},
+        {"f xr_target_", {MTLPixelFormatRGBA16Float, 1}},
         {"f fmt_load_rgb9e5", {MTLPixelFormatR32Uint, 1}},
         {"f fmt_mip_", {MTLPixelFormatR32Uint, 1}}};
     for (const auto &[fragment, textures] : sets)
         if (line.find(std::string("| ") + fragment) != std::string::npos)
             return textures;
     return {};
-}
-
-// Whether a state's key names an RGB10A8_2P_XR10 colour ("c<j>=550:"): a state with a two-plane form (xr_pass.h)
-inline bool twoPlaneColors(const std::string &key)
-{
-    const std::string head = key.substr(0, key.find(" | "));
-    for (size_t at = head.find(" c"); at != std::string::npos; at = head.find(" c", at + 2))
-        if (head.compare(at + 4, 4, "550:") == 0)
-            return true;
-    return false;
 }
 
 // Each state of `lines` (corpusLines') once, made with its functions' library: Core Animation's `qc`, another framework's

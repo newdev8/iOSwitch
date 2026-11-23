@@ -310,8 +310,8 @@ const ComputeState *Completion::kernel(MTLComputePipelineDescriptor *descriptor,
                 break;
             }
             }
-            // a translation the bridge fails ("fails: ", NativeMetalDirectCompute.rs mapped_samplers) fails the same at
-            // every try: its dispatches fail, and nothing asks again
+            // a translation the bridge fails ("fails: ", NativeMetalDirectComputeBinds.rs mapped_samplers) fails the
+            // same at every try: its dispatches fail, and nothing asks again
             if (outcome == Compiler::Outcome::Failed && !why.compare(0, kTranslationFails.size(), kTranslationFails))
                 return Build::Outcome::Gone;
             return outcome == Compiler::Outcome::Made      ? Build::Outcome::Made

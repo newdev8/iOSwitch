@@ -34,6 +34,8 @@ int switch_gpu_events_compositor(int pid, int on);
 /* The calling kernel thread's event records count as process `pid`'s until it calls again with 0 (the VIC's engine
  * thread, around each job it runs for a process) */
 void switch_gpu_events_charge(int pid);
+/* The process the calling kernel thread is charged to, 0 for none */
+int switch_gpu_events_charged(void);
 
 int switch_gpu_event_acquire(void *task, uint32_t port, struct switch_gpu_event **event);
 void switch_gpu_event_retain(struct switch_gpu_event *event);

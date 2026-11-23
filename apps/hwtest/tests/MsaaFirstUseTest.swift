@@ -37,6 +37,7 @@ struct MsaaFirstUseTest: HWTest {
                 switch await CompressionSettled.wait(gpu.device) {
                 case .settled(let ms): metrics.set("made_settled_ms", ms, digits: 3)
                 case .never: checks.append(("the compression thread settled within 5 s", false))
+                case let .refused(why): checks.append(("the compression-settled event was refused: \(why)", false))
                 case .absent: break
                 }
             }

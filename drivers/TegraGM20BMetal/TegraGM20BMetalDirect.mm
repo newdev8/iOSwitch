@@ -91,11 +91,10 @@ CompileOutcome Direct::form(MTLRenderPipelineDescriptor *descriptor, bool barrie
         formats.push_back({t.slot, t.format, t.stage == kCubicVertex});
     for (const WrittenTexture &t : textures.written)
         formats.push_back({t.slot, t.format, false});
-    const NmbDirectBinds binds = {
-        cubic.data(),           uint32_t(cubic.size()), formats.data(),    uint32_t(formats.size()),
-        textures.fragmentTests, textures.bindStride,    textures.twoPlane, textures.xrShadows};
-    const bool plain = formats.empty() && cubic.empty() && !textures.fragmentTests && !textures.bindStride &&
-                       !textures.twoPlane && !textures.xrShadows;
+    const NmbDirectBinds binds = {cubic.data(),           uint32_t(cubic.size()),
+                                  formats.data(),         uint32_t(formats.size()),
+                                  textures.fragmentTests, textures.bindStride};
+    const bool plain = formats.empty() && cubic.empty() && !textures.fragmentTests && !textures.bindStride;
     const char *refused = nullptr;
     if (!translator_.render(descriptor, barrier, textures.format, textures.samples, plain ? nullptr : &binds, made, &a,
                             &refused)) {
@@ -142,22 +141,18 @@ CompileOutcome Direct::make(MTLRenderPipelineDescriptor *descriptor, const std::
     };
     if (requested == PackForm::Barrier)
         return barrierForm(true);
-    // A shadowed variant stores each colour's half shadow beside its codes as a storage image, which has no ROP form: only
-    // the interlock orders those stores, so it keeps the interlocked form even where its program loads no colour (an
-    // unblended writer), and m2v cannot translate it without the interlock (its plan asks again for the shadowed variant)
-    const bool shadowed = textures.xrShadows != 0;
     CompileOutcome outcome = form(descriptor, false, textures, key, attributes, out, why, registers, split);
     if (outcome == CompileOutcome::Made) {
         const bool storage = out.pipeline.flags & PipelineStorageMetadata;
         dropUnreadFetches(out);
-        if (!storage || shadowed || (out.pipeline.storageMask && loadsSurface(out)))
+        if (!storage || (out.pipeline.storageMask && loadsSurface(out)))
             return strideTwin(descriptor, textures, key, attributes, out, why, split);
         // its program holds the pixel interlock around no load of a colour: made again without the interlock
         storageRefusal_ = out.pipeline.storageMask ? "storage form: its program loads no colour"
                                                    : "storage form: its program reads and writes no colour";
         return barrierForm(false);
     }
-    if (outcome != CompileOutcome::Refused || shadowed || why.rfind("storage form", 0) != 0)
+    if (outcome != CompileOutcome::Refused || why.rfind("storage form", 0) != 0)
         return outcome;
     storageRefusal_ = why;
     return barrierForm(false);
@@ -274,8 +269,8 @@ CompileOutcome Direct::kernel(MTLComputePipelineDescriptor *descriptor, const Nm
     const char *refused = nullptr;
     if (!translator_.compute(descriptor, mapsStated ? &stated : &dispatch, madeKernel, &a, &refused)) {
         why = std::string("m2v refused its translation: ") + (refused ? refused : "");
-        // "fails: ", a dispatch Metal runs that m2v fails too (NativeMetalDirectCompute.rs mapped_samplers): its command
-        // buffer fails, not a route to m2v
+        // "fails: ", a dispatch Metal runs that m2v fails too (NativeMetalDirectComputeBinds.rs mapped_samplers): its
+        // command buffer fails, not a route to m2v
         const bool fails = refused && (!strncmp(refused, "retry: ", 7) || !strncmp(refused, "fails: ", 7));
         return fails ? CompileOutcome::Failed : CompileOutcome::Refused;
     }

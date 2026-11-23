@@ -50,6 +50,9 @@ struct SubmitJobPathTest: GPUPathTest {
             )
         }
         try gpu.finish(committed)
+        guard case .counts(let drawn) = GPUPaths.read(connection) else {
+            throw TestFailure("no path counters after the frames")
+        }
         var wrong = 0
         for (frame, target) in targets.enumerated() {
             let bytes = try await gpu.read(target, bytesPerPixel: 4)
@@ -70,6 +73,10 @@ struct SubmitJobPathTest: GPUPathTest {
         metrics.set("stale_sets", stale)
         metrics.set("shared_uses", shared)
         metrics.set("set_share", jobs > 0 ? String(format: "%.2f", Double(setJobs) / Double(jobs)) : "-")
+        metrics.set("frame_jobs", drawn.taken("submit_jobs", since: before))
+        metrics.set("frame_uses", drawn.taken("shared_uses", since: before))
+        metrics.set("readback_jobs", after.taken("submit_jobs", since: drawn))
+        metrics.set("readback_uses", after.taken("shared_uses", since: drawn))
         var failures: [String] = []
         if wrong != 0 { failures.append("\(wrong) bytes differ from the clears and draws") }
         if shared > Self.frames {

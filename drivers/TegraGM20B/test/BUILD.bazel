@@ -1087,6 +1087,7 @@ host_test(
         "//drivers/TegraGM20BMetal:amplification.cpp",
         "//drivers/TegraGM20BMetal:vertex_streams.cpp",
         "//drivers/TegraGM20BMetal:command_buffer.cpp",
+        "//drivers/TegraGM20BMetal:device_channel.cpp",
         "//drivers/TegraGM20BMetal:gpu.cpp",
         "//drivers/TegraGM20BMetal:gm20b_gpu_internal.h",
         "//drivers/TegraGM20BMetal:tessellation.cpp",

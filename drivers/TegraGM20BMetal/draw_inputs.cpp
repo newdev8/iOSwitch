@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// See gpu.h (RenderEncoder::prepare's inputs: a stage's root table, which set-0 entries moved, the blend and
+// See render_encoder.h (RenderEncoder::prepare's inputs: a stage's root table, which set-0 entries moved, the blend and
 // argument table words, the region test's geometry, a fetch's attachment views, the raster state and a colour
 // matrix form's constants).
 #include "lock.h"
@@ -7,7 +7,6 @@
 #include "clear_box.h"
 #include "icb.h"
 #include "dynamic_push.h"
-#include "blend_color.h"
 #include "gpu.h"
 #include "layers.h"
 #include "kit.h"
@@ -129,22 +128,9 @@ bool RenderEncoder::anyEntryMoved(const SetEntries &entries) const
     return false;
 }
 
-// The extended blend colour's words (blend_color.h) where `r` reads them, made again after the colour moved
-bool RenderEncoder::blendWords(const PackPipeline &r, [[maybe_unused]] const char **why)
-{
-    if (!r.blendColorWord || !blendWordsDirty_)
-        return true;
-    float color[4];
-    memcpy(color, blendColor_, sizeof color);
-    blendColorWords(color, blendWords_);
-    blendWordsDirty_ = false;
-    return true;
-}
-
 // `pl`'s argument tables (spill_table.h) whose entries moved: the record's words with the spilled bind offsets'
 // residuals and a fragment table's dynamic words, uploaded where they differ from the encoder's last upload, named in set 0
-bool RenderEncoder::fillSpills(const Pipeline &pl, uint32_t moved, bool all, SetResiduals &prepared, uint32_t *set,
-                               const char **why)
+void RenderEncoder::fillSpills(const Pipeline &pl, uint32_t moved, bool all, SetResiduals &prepared, uint32_t *set)
 {
     const PackPipeline &r = *pl.rec;
     Device &d = *dev_;
@@ -155,9 +141,7 @@ bool RenderEncoder::fillSpills(const Pipeline &pl, uint32_t moved, bool all, Set
         uint32_t words[kSpillWordsMax];
         composeSpill(pl.spill[k], count, prepared.spilled[k], words);
         if (k == 1) {
-            if (!blendWords(r, why))
-                return false;
-            patchBlendPush(r, blendColor_, blendWords_, words, kRootPushWords, count);
+            patchBlendPush(r, blendColor_, words, kRootPushWords, count);
             patchShaderTestPush(r.shaderTests, ds_, stencilRef_, depthRange_, false, words, kRootPushWords, count);
         }
         const uint64_t va = spillUploads_[k].resolve(words, count, [&](const uint32_t *from, uint32_t n) {
@@ -169,7 +153,6 @@ bool RenderEncoder::fillSpills(const Pipeline &pl, uint32_t moved, bool all, Set
         });
         spillDescriptor(va, count, set + pl.entries[entry - 1].offset / 4);
     }
-    return true;
 }
 
 DrawGeometry RenderEncoder::geometry(const Pipeline &pl, uint32_t primitive, int32_t first, uint32_t count,

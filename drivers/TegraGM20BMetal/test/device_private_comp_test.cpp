@@ -6,6 +6,7 @@
 #include "device_private_comp.h"
 #include "../record.h"
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cstring>
 #include <mutex>
@@ -186,6 +187,81 @@ TEST_F(DevicePrivateComp, AStoredDepth32FloatTakesZF32_2CZAndKeepsItForTheNext)
     EXPECT_TRUE(next.comptags);
     dev.destroyTexture(next);
     dev.destroyTexture(first);
+}
+
+// The compression thread's ZBC add held open in the kernel model (kernel_model::arriving, outside callLock) until
+// released, then answered as a full table
+class HeldZbc {
+public:
+    void arm()
+    {
+        std::lock_guard<std::mutex> l(lock_);
+        held_ = open_ = false;
+        kernel_model::arriving.store(&arrive, std::memory_order_release);
+    }
+
+    void awaitHeld()
+    {
+        std::unique_lock<std::mutex> l(lock_);
+        wake_.wait(l, [] {
+            return held_;
+        });
+    }
+
+    void release()
+    {
+        std::lock_guard<std::mutex> l(lock_);
+        open_ = true;
+        wake_.notify_all();
+    }
+
+    ~HeldZbc()
+    {
+        release();
+    }
+
+private:
+    static int arrive(uint32_t method, const void *)
+    {
+        if (method != TegraGM20BMethodZbc)
+            return KERN_SUCCESS;
+        std::unique_lock<std::mutex> l(lock_);
+        held_ = true;
+        wake_.notify_all();
+        wake_.wait(l, [] {
+            return open_;
+        });
+        return kIOReturnNoResources;
+    }
+
+    static inline std::mutex lock_;
+    static inline std::condition_variable wake_;
+    static inline bool held_ = false, open_ = false;
+};
+
+// The compression-settled event waits for the ZBC entries asked so far as for compressed memory: a block asked while
+// the kernel holds the table's add runs once the add is answered, so HW Test's ZBC rounds need no gap between them
+TEST_F(DevicePrivateComp, TheSettledEventWaitsForTheZbcEntriesAsked)
+{
+    HeldZbc zbc;
+    zbc.arm();
+    TegraGM20BAbiZbc e = {};
+    e.type = TegraGM20BZbcColor;
+    e.format = gm20b::kZbcA8R8G8B8;
+    e.ds[0] = e.l2[0] = 0x3f000000;
+    for (uint8_t i = 0; i < gm20b::ZbcTable::kZbcRepeats; i++)
+        EXPECT_FALSE(gm20b::DeviceHarness::zbcHeld(dev, e));
+    zbc.awaitHeld();
+    std::atomic<bool> ran{false};
+    std::promise<void> settled;
+    dev.compWhenSettled([&] {
+        ran.store(true);
+        settled.set_value();
+    });
+    EXPECT_FALSE(ran.load()) << "ran while the ZBC entry was in the kernel's hands";
+    zbc.release();
+    settled.get_future().wait();
+    EXPECT_FALSE(gm20b::DeviceHarness::zbcHeld(dev, e)) << "refused: the table is full";
 }
 
 class DeviceClearBox : public harness::DeviceTest {

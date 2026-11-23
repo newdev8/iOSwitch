@@ -47,6 +47,7 @@ enum : uint32_t {
 
 enum : uint32_t {
     SAMPLE_CENTER = NVDEF(NV902D, SET_PIXELS_FROM_MEMORY_SAMPLE_MODE, ORIGIN, CENTER),
+    SAMPLE_CORNER = NVDEF(NV902D, SET_PIXELS_FROM_MEMORY_SAMPLE_MODE, ORIGIN, CORNER),
     FILTER_POINT = NVDEF(NV902D, SET_PIXELS_FROM_MEMORY_SAMPLE_MODE, FILTER, POINT),
     FILTER_BILINEAR = NVDEF(NV902D, SET_PIXELS_FROM_MEMORY_SAMPLE_MODE, FILTER, BILINEAR)
 };
@@ -351,6 +352,49 @@ void emitGenerate(Push &p, const MipChain &c, uint64_t chainVa, const Pitch *lev
         const uint64_t du = ratio(s.width, d.width), dv = ratio(s.height, d.height);
         blit(p, FILTER_BILINEAR, 0, 0, d.width, d.height, du, dv, origin(sampling, du), origin(sampling, dv),
              sampling.corner ? 1u : SAMPLE_CENTER);
+    }
+    end(p);
+}
+
+uint32_t twodPointFormat(uint32_t bpp)
+{
+    switch (bpp) {
+    case 1:
+        return NV902D_SET_DST_FORMAT_V_Y8;
+    case 2:
+        return NV902D_SET_DST_FORMAT_V_G8R8;
+    case 4:
+        return NV902D_SET_DST_FORMAT_V_A8B8G8R8;
+    case 8:
+        return NV902D_SET_DST_FORMAT_V_R16_G16_B16_A16;
+    case 16:
+        return NV902D_SET_DST_FORMAT_V_RF32_GF32_BF32_AF32;
+    default:
+        return 0;
+    }
+}
+
+void emitPointGenerate(Push &p, const MipChain &c, uint64_t chainVa, uint32_t fmt2d, uint32_t firstLevel,
+                       uint32_t lastLevel)
+{
+    if (!c.levels || lastLevel >= c.levels || firstLevel > lastLevel)
+        return;
+    // corner origin: texel x takes the source texel holding SRC_X0 + 2x, the middle of texel 2x + 1 from 3/2; an axis of
+    // one texel keeps texel 0 from 1/2
+    const auto axis = [](uint32_t source, uint64_t &step, uint64_t &start) {
+        step = source > 1 ? 2ull << 32 : 1ull << 32;
+        start = source > 1 ? 3ull << 31 : 1ull << 31;
+    };
+    begin(p);
+    for (uint32_t l = firstLevel; l < lastLevel; l++) {
+        const MipLevel &s = c.level[l], &d = c.level[l + 1];
+        p.m(TWOD_WAIT_FOR_IDLE, 0, kSubc2D);  // level l's writes are done before level l + 1 reads them
+        surface(p, TWOD_SET_DST_FORMAT, fmt2d, true, d.yLog2, 0, d.width, d.height, chainVa + d.offset);
+        surface(p, TWOD_SET_SRC_FORMAT, fmt2d, true, s.yLog2, 0, s.width, s.height, chainVa + s.offset);
+        uint64_t du, dv, sx, sy;
+        axis(s.width, du, sx);
+        axis(s.height, dv, sy);
+        blit(p, FILTER_POINT, 0, 0, d.width, d.height, du, dv, sx, sy, SAMPLE_CORNER);
     }
     end(p);
 }

@@ -2,7 +2,6 @@
 #include "facade_variant_compiler.h"
 #include "../fragment_tests.h"
 #include "bazel/testing/fresh_process.h"
-#import <IOSurface/IOSurface.h>
 
 #include <unistd.h>
 
@@ -173,12 +172,11 @@ void preparedCubic(uint32_t stage, bool pipelineFirst)
 
 void composedForms()
 {
-    constexpr MTLPixelFormat colour = MTLPixelFormat(550);
     const std::string directory = dir() + "/cubic-composed-" + std::to_string(getpid());
     mkdir(directory.c_str(), 0700);
     RenderCompiler compiler;
     ASSERT_TRUE(compiler.serve(directory));
-    MTLRenderPipelineDescriptor *description = descriptor(nil, colour);
+    MTLRenderPipelineDescriptor *description = descriptor(nil, MTLPixelFormatBGRA8Unorm);
     description.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
     const gm20b::StageKey vertex{"v", ""}, fragment{"f", ""};
     const std::string key = gm20b::pipelineKey(description, &vertex, &fragment, "", "QuartzCore");
@@ -198,34 +196,9 @@ void composedForms()
     description.fragmentFunction = [library newFunctionWithName:@"f"];
     id<MTLRenderPipelineState> state = [device newRenderPipelineStateWithDescriptor:description error:nil];
     ASSERT_TRUE(state != nil);
-    NSMutableArray *planes = [NSMutableArray array];
-    for (unsigned bytes : {4u, 1u})
-        [planes addObject:@{
-            (id)kIOSurfacePlaneWidth : @64,
-            (id)kIOSurfacePlaneHeight : @64,
-            (id)kIOSurfacePlaneBytesPerElement : @(bytes),
-            (id)kIOSurfacePlaneBytesPerRow : @(64 * bytes),
-            (id)kIOSurfacePlaneOffset : @(bytes == 4 ? 0 : 64 * 64 * 4),
-            (id)kIOSurfacePlaneSize : @(64 * 64 * bytes)
-        }];
-    IOSurfaceRef surface = IOSurfaceCreate((__bridge CFDictionaryRef) @{
-        (id)kIOSurfaceWidth : @64,
-        (id)kIOSurfaceHeight : @64,
-        (id)kIOSurfacePixelFormat : @(uint32_t('b3a8')),
-        (id)kIOSurfaceAllocSize : @(64 * 64 * 5),
-        (id)kIOSurfacePlaneInfo : planes
-    });
-    ASSERT_NE(surface, nullptr);
-    MTLTextureDescriptor *td =
-        [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:colour width:64 height:64 mipmapped:NO];
-    td.storageMode = MTLStorageModeShared;
-    td.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
-    id<MTLTexture> target = [device newTextureWithDescriptor:td iosurface:surface plane:0];
-    CFRelease(surface);
-    ASSERT_TRUE(target != nil);
     id<MTLCommandBuffer> commands = [[device newCommandQueue] commandBuffer];
     MTLRenderPassDescriptor *pass = [MTLRenderPassDescriptor renderPassDescriptor];
-    pass.colorAttachments[0].texture = target;
+    pass.colorAttachments[0].texture = image(device, MTLTextureUsageRenderTarget);
     pass.colorAttachments[0].loadAction = MTLLoadActionClear;
     pass.colorAttachments[0].storeAction = MTLStoreActionStore;
     pass.depthAttachment.texture = image(device, MTLTextureUsageRenderTarget, MTLPixelFormatDepth32Float);
@@ -246,13 +219,12 @@ void composedForms()
     ASSERT_EQ(requests.size(), 3u);
     const auto composed = std::find_if(requests.begin(), requests.end(), [](const auto &request) {
         return request.variant.fragmentTests == uint8_t(gm20b::FragmentTests::DepthWrite) &&
-               !request.variant.cubic.empty() && request.variant.twoPlane;
+               !request.variant.cubic.empty();
     });
     ASSERT_NE(composed, requests.end());
     const auto &forms = composed->variant;
     ASSERT_EQ(forms.cubic.samplers.size(), 1u);
     EXPECT_EQ(forms.cubic.samplers[0].stage, gm20b::kCubicVertex);
-    EXPECT_TRUE(forms.twoPlane);
     EXPECT_EQ(forms.fragmentTests, uint8_t(gm20b::FragmentTests::DepthWrite));
     __unsafe_unretained SwitchMetalPipeline *pipeline = (SwitchMetalPipeline *)state;
     for (const auto &request : requests) {
@@ -275,22 +247,19 @@ void composedForms()
     EXPECT_EQ(compiler.captured().size(), 3u);
 }
 
-// A BGRA10_XR colour written unblended by one state and then blended into by another in the same pass: the pass holds the
-// colour's half shadow (xr_shadow.h) and asks the shader compiler for both states' " | xrsh=1" variants. Made, both
-// draws take them; with `refused` the compiler refuses both, both draws take their states' own records, and each refused
-// variant's key has a refusal line of its own.
-void shadowedPass(bool refused)
+// A BGRA10_XR colour written unblended by one state and then blended into by another in the same pass: the pass renders
+// it into its RGBA16Float stand-in, Metal's tile, which the ROP blends, and stores it back into the codes; no variant of
+// either state is asked, both draws take their own records
+void standInPass()
 {
     constexpr MTLPixelFormat colour = MTLPixelFormat(552);
-    const std::string directory = dir() + "/xr-shadow-" + (refused ? "refused-" : "made-") + std::to_string(getpid());
+    const std::string directory = dir() + "/xr-stand-in-" + std::to_string(getpid());
     mkdir(directory.c_str(), 0700);
     RenderCompiler compiler;
-    if (refused)
-        compiler.refuses = [](const gm20b::CompileRequest &request) {
-            return request.variant.xrShadows != 0;
-        };
     ASSERT_TRUE(compiler.serve(directory));
-    const std::string pack = writePack(packKey(MTLPixelFormatBGRA8Unorm));
+    const std::string pack = writePack(packKey(MTLPixelFormatBGRA8Unorm), {}, {}, true, "",
+                                       {{gm20b::formatLoadState(552), MTLPixelFormatRGBA16Float},
+                                        {gm20b::formatStoreState(552), MTLPixelFormatRGBA16Uint}});
     NSString *why = nil;
     id<MTLDevice> device = metal_device_open(pack.c_str(), 0, 0, &why);
     ASSERT_TRUE(device != nil) << (why ? why.UTF8String : "");
@@ -311,6 +280,7 @@ void shadowedPass(bool refused)
     __unsafe_unretained SwitchMetalPipeline *states[2] = {(SwitchMetalPipeline *)writer,
                                                           (SwitchMetalPipeline *)blender};
     ASSERT_TRUE(states[0]->_raw && states[1]->_raw) << "the shader compiler makes both states at their creation";
+    const size_t made = compiler.captured().size();
     MTLTextureDescriptor *td =
         [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:colour width:64 height:64 mipmapped:NO];
     td.storageMode = MTLStorageModeShared;
@@ -336,34 +306,14 @@ void shadowedPass(bool refused)
         [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
     }
     [encoder endEncoding];
-    ASSERT_TRUE(compiler.wait(4)) << "each state, then each state's shadowed variant at the pass's end";
-    size_t asked = 0;
-    for (const auto &request : compiler.captured())
-        asked += request.variant.xrShadows == 1;
-    EXPECT_EQ(asked, 2u);
-    gm20b::RenderVariant shadowed;
-    shadowed.xrShadows = 1;
-    std::vector<uint32_t> expected;
-    for (__unsafe_unretained SwitchMetalPipeline *state : states) {
-        const auto twin = state->_variants.find(shadowed.name());
-        ASSERT_NE(twin, state->_variants.end()) << state->_key;
-        ASSERT_EQ(ready(*twin->second), !refused) << state->_key;
-        const uint32_t own = program(state->_raw->methods, 2);
-        if (!refused)
-            ASSERT_NE(program(twin->second->value()->methods, 2), own) << state->_key;
-        expected.push_back(refused ? own : program(twin->second->value()->methods, 2));
-    }
     [commands commit];
     [commands waitUntilCompleted];
     EXPECT_EQ(commands.status, MTLCommandBufferStatusCompleted) << commands.error.description.UTF8String;
-    EXPECT_EQ(drawnPrograms(firstJob, 2), expected);
-    for (__unsafe_unretained SwitchMetalPipeline *state : states) {
-        const std::string key = state->_key + shadowed.name();
-        const uint64_t line = switch_refusal_key_with(SWITCH_REFUSAL_KEY("gm20b", "xr.shadow_twin"),
-                                                      gm20b::Pack::fnv(key.data(), key.size()));
-        EXPECT_EQ(switch_refusal_first(line), !refused)
-            << (refused ? "no refusal line for " : "a refusal line for ") << key;
-    }
+    EXPECT_EQ(compiler.captured().size(), made) << "no shadowed variant: the stand-in is the pass's tile";
+    const std::vector<uint32_t> drawn = drawnPrograms(firstJob, 2);
+    ASSERT_GE(drawn.size(), 2u);
+    EXPECT_EQ(drawn[0], program(states[0]->_raw->methods, 2));
+    EXPECT_EQ(drawn[1], program(states[1]->_raw->methods, 2));
 }
 
 }  // namespace
@@ -396,21 +346,12 @@ TEST(GM20BFacadeCubic, FragmentBindingsBeforePipelineSelectThePreparedProgram)
     });
 }
 
-TEST(GM20BFacadeCubic, VertexCubicComposesWithDepthTestsAndTwoPlaneTargetsAtSetup)
+TEST(GM20BFacadeCubic, VertexCubicComposesWithDepthTestsAtSetup)
 {
     switch_ios::test::ExpectPassesInFreshProcess(composedForms);
 }
 
-TEST(GM20BFacadeCubic, APassWithAnUnblendedWriterAndABlendKeepsItsHalfShadow)
+TEST(GM20BFacadeCubic, AnExtendedRangeColourWrittenThenBlendedRendersThroughItsStandIn)
 {
-    switch_ios::test::ExpectPassesInFreshProcess([] {
-        shadowedPass(false);
-    });
-}
-
-TEST(GM20BFacadeCubic, EachRefusedShadowedVariantHasItsOwnRefusalLine)
-{
-    switch_ios::test::ExpectPassesInFreshProcess([] {
-        shadowedPass(true);
-    });
+    switch_ios::test::ExpectPassesInFreshProcess(standInPass);
 }

@@ -128,7 +128,7 @@ Pipeline *Device::reachTwin(Pipeline &pl, const char **why)
         }
     rec.fs = reach->rec->fs;
     rec.flags = 0;
-    rec.blendColorWord = rec.halfBlendColorWord = 0;
+    rec.halfBlendColorWord = 0;
     rec.storageMask = rec.storageWriteMask = rec.storageTests = rec.storageBlendMask = 0;
     rec.shaderTests = {};
     rec.variantCount[0] = rec.variantCount[1] = 0;

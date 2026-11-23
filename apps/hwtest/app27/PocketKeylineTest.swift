@@ -105,7 +105,7 @@ struct PocketKeylineTest: HWTest {
     }
 
     /// The render server's debug lines for its Core Animation draws and short writes, for 30 s from its notification
-    /// handler (gpu.h armKeylineProbe): their budgets were spent long before this test
+    /// handler (pipeline.h armKeylineProbe): their budgets were spent long before this test
     static func armRawProbe() {
         CFNotificationCenterPostNotification(
             CFNotificationCenterGetDarwinNotifyCenter(),

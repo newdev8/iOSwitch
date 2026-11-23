@@ -162,20 +162,26 @@ bool ycbcrLumaRows(SwitchMetalTexture *t, MTLRegion r, NSUInteger level, NSUInte
 // replaceRegion's (an M-series Mac with API validation off), where its twin would open m2v
 bool cpuReachesNothing(SwitchMetalTexture *t)
 {
-    // its memory may move on the submit worker (private_comp.h compressedFromPlain), whose fields no other thread reads
-    if (t->_movableBytes) {
-        SWITCH_REFUSE("gm20b", "texture.cpu.private",
-                      "a CPU copy of a private %lux%lu texture: nothing moved (Metal's validation stops a CPU copy of "
-                      "private storage)",
-                      (unsigned long)t->_descriptor.width, (unsigned long)t->_descriptor.height);
-        return true;
-    }
     if (t->_descriptor.storageMode != MTLStorageModeMemoryless)
         return false;
     SWITCH_REFUSE("gm20b", "texture.cpu.memoryless",
                   "a CPU copy of a memoryless %lux%lu texture: nothing moved, as Metal",
                   (unsigned long)t->_descriptor.width, (unsigned long)t->_descriptor.height);
     return true;
+}
+
+// A texture made plain for want of compressed memory, ahead of its CPU copy: a want still there is withdrawn on the submit
+// worker between its submissions, where no move of the texture is under way (private_comp.h compressedFromPlain), and it
+// stays plain for life, as one with a raw view does. A move that came first wrote the texture's memory fields under the
+// device lock, which wantsCompressed takes, or on the worker this waits for: the copy reads them as they then stay.
+void settleMovable(SwitchMetalTexture *t)
+{
+    if (!t->_movableBytes || !gRM->raw->wantsCompressed(t->_raw))
+        return;
+    gm20bExcludingSubmissions([t] {
+        gRM->raw->keepPlain(t->_raw);
+        return true;
+    });
 }
 
 // A raw texture's CPU copy no path took: the copy engine's transfer of one with no CPU mapping (compressed memory) failed,
@@ -231,6 +237,7 @@ SwitchMetalTexture *cpuOwner(SwitchMetalTexture *t)
 {
     if (!r.size.width || !r.size.height || !r.size.depth || cpuReachesNothing(self))
         return;
+    settleMovable(self);
     if (SwitchMetalTexture *owner = cpuOwner(self)) {
         [(id<MTLTexture>)owner replaceRegion:r
                                  mipmapLevel:_levelsBase + level
@@ -330,6 +337,7 @@ SwitchMetalTexture *cpuOwner(SwitchMetalTexture *t)
 {
     if (!r.size.width || !r.size.height || !r.size.depth || cpuReachesNothing(self))
         return;
+    settleMovable(self);
     if (SwitchMetalTexture *owner = cpuOwner(self)) {
         [(id<MTLTexture>)owner getBytes:bytes
                             bytesPerRow:row

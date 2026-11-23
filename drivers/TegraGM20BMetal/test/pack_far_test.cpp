@@ -104,7 +104,7 @@ TEST(PackFar, ARecordPastEveryArgumentOfARenderPipelineFailsTheLoad)
     w.entries = gm20b::kSetEntriesMax + 1;
     w.blobWords = 1024;
     EXPECT_FALSE(pack.load(write(w, "far_bound.pack").c_str(), 0, err));
-    EXPECT_EQ(err, "pipeline 0000000000000007 of 379 set-0 entries: past the 378 a record holds");
+    EXPECT_EQ(err, "pipeline 0000000000000007 of 371 set-0 entries: past the 370 a record holds");
 }
 
 TEST(PackFar, AProgramsFarTableNamesItsUniformBuffersPastByte496)

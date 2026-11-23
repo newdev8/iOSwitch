@@ -4,7 +4,8 @@ import HWTestCore
 import HWTestGPU
 import Metal
 
-/// RGB10A8_2P_XR10 (550) colours a pass cannot give their two planes as two targets. images: a 64x64 'b3a8' surface's
+/// RGB10A8_2P_XR10 (550) colours at the last colour index and beside a device-made 550, each rendered through its own
+/// RGBA16Float stand-in. images: a 64x64 'b3a8' surface's
 /// 550 at colour 7 beside seven BGRA8Unorm targets, every colour loaded, a draw of per-texel XR values (colour in
 /// [-0.75, 1.25], alpha in [0, 1]) to every colour over pixels [8, 56) x [4, 40): the surface's word plane and alpha
 /// plane must equal those of the same draw into another surface's 550 alone, both planes CPU-written alike before, and

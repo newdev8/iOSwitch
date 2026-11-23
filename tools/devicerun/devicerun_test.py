@@ -34,28 +34,32 @@ class Checks(unittest.TestCase):
                 self.assertTrue(not c.per or c.per in names, c.name)
                 self.assertTrue(not c.preceded or c.preceded in names, c.name)
 
-    def test_zbc_full_lines_are_listed_by_process_and_type(self):
+    def test_zbc_full_lines_are_one_a_process_and_type(self):
         full = next(c for c in checks.GROUPS['gpu'] if c.name == 'gm20b.zbc-full-lines')
 
-        def record(process: str, kind: str) -> dict:
+        def record(process: str, pid: int, kind: str) -> dict:
             return {
                 'timestamp': '2026-11-22 09:00:00.000000-0800',
                 'processImagePath': f'/private/var/containers/Bundle/Application/X/{process}.app/{process}',
                 'subsystem': checks.GPU_METAL_SUBSYSTEM,
                 'category': 'gm20b',
                 'messageType': 'Error',
-                'eventMessage': f"SwitchMetal: the GPU's ZBC {kind} table is full (every process's, never emptied): "
-                f'full '
-                'clears of compressed targets to values it lacks write their texels',
+                'eventMessage': f"SwitchMetal: {process}[{pid}] the GPU's ZBC {kind} table is full (every process's, "
+                'never emptied): full clears of compressed targets to values it lacks write their texels',
             }
 
-        log = [record('SwitchHWTest27', 'colour'), record('backboardd', 'colour'), record('backboardd', 'depth')]
+        log = [
+            record('SwitchHWTest27', 412, 'colour'),
+            record('SwitchHWTest27', 977, 'colour'),
+            record('backboardd', 61, 'colour'),
+            record('backboardd', 61, 'depth'),
+        ]
         results, _ = devicerun.run_checks(log, [full])
-        self.assertEqual(results[0].verdict, INFO)
-        self.assertIn('SwitchHWTest27/colour x1', results[0].observed)
-        self.assertIn('backboardd/depth x1', results[0].observed)
-        results, _ = devicerun.run_checks([], [full])
-        self.assertEqual(results[0].verdict, NO_DATA)
+        self.assertEqual(results[0].verdict, PASS, results[0].observed)
+        self.assertIn('SwitchHWTest27/977/colour x1', results[0].observed)
+        results, _ = devicerun.run_checks([*log, record('backboardd', 61, 'depth')], [full])
+        self.assertEqual(results[0].verdict, FAIL)
+        self.assertIn('backboardd/61/depth x2', results[0].observed)
 
     def test_predicate_escapes_and_covers_every_check(self):
         check = Check('q', 'o', 'say "hi" \\ there', process='kernel', subsystem='a.b', level='error')

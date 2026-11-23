@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// See gpu.h. The copies follow NVK's nouveau_copy_rect and nvk_cmd_copy_memory_ce (MIT).
+// See blit_encoder.h. The copies follow NVK's nouveau_copy_rect and nvk_cmd_copy_memory_ce (MIT).
 #include "lock.h"
 #include "fx/fx_image.h"
 #include "gpu.h"
@@ -44,15 +44,6 @@ BlitEncoder *CommandBuffer::blit()
     blits++;
     return &e;
 }
-
-namespace {
-// `lines` rows of `width` texels of `bpp` bytes, pitch to pitch
-void copyRows(Push &p, uint64_t src, uint32_t srcPitch, uint64_t dst, uint32_t dstPitch, uint32_t width, uint32_t lines,
-              uint32_t bpp, Device::Stats &stats)
-{
-    copySides(p, {src, srcPitch}, {dst, dstPitch}, width, lines, bpp, stats);
-}
-}  // namespace
 
 TextureTransferResult Device::transferTexture(const Texture &texture, uint32_t level, uint32_t slice,
                                               const uint32_t origin[3], const uint32_t size[3], void *bytes,
@@ -217,8 +208,7 @@ void BlitEncoder::copyRect(uint64_t src, uint32_t srcPitch, uint64_t dst, uint32
     cb_->bufferWrites_.note(dst, rowStorageBytes(dstPitch, width, lines, bpp));
     if (!width || !lines || !bpp)
         return;
-    room();
-    copyRows(p_, src, srcPitch, dst, dstPitch, width, lines, bpp, dev_->stats);
+    copyElements({src, srcPitch}, {dst, dstPitch}, width, lines, texelRemap(bpp), bpp);
 }
 
 void BlitEncoder::fillTexels(const Texture &t, uint32_t z, uint32_t w, uint32_t h, const CopyFill &fill)
@@ -228,7 +218,7 @@ void BlitEncoder::fillTexels(const Texture &t, uint32_t z, uint32_t w, uint32_t 
     p_.m(CE_SET_REMAP_CONST_A, fill.constA, SUBC_COPY);
     p_.m(CE_SET_REMAP_CONST_B, fill.constB, SUBC_COPY);
     const CopySide side = sideOf(t, 0, 0, z);
-    copyRemapped(p_, side, side, w, h, fill.remap, uint32_t(fill.componentBytes) * fill.components, dev_->stats);
+    copyElements(side, side, w, h, fill.remap, uint32_t(fill.componentBytes) * fill.components);
 }
 
 void BlitEncoder::fillRect(const Texture &t, uint32_t x, uint32_t y, uint32_t z, uint32_t w, uint32_t h,
@@ -266,7 +256,7 @@ void BlitEncoder::fillRect(const Texture &t, uint32_t x, uint32_t y, uint32_t z,
         room(40);
         p_.m(CE_SET_REMAP_CONST_A, a, SUBC_COPY);
         p_.m(CE_SET_REMAP_CONST_B, b, SUBC_COPY);
-        copyRemapped(p_, side, side, w, h, remap, bytes, dev_->stats, !first);
+        copyElements(side, side, w, h, remap, bytes, !first);
         left &= ~done;
     }
 }
@@ -304,14 +294,14 @@ void BlitEncoder::timestamp(uint64_t va, bool afterCopies)
 }
 
 void BlitEncoder::generate(Texture &t, uint32_t fmt2d, uint32_t first, uint32_t last,
-                           [[maybe_unused]] uint32_t unproven, uint32_t firstLayer, uint32_t layers)
+                           [[maybe_unused]] uint32_t unproven, uint32_t firstLayer, uint32_t layers, bool point)
 {
     Texture::Chain *c = t.chain;
     if (!c || !fmt2d || first >= last || last >= c->layout.levels)
         return;
     cb_->use(t, true);
     room(uint32_t(fx::generateWords(c->layout, first, last) * layers));
-    fx::emitGenerateLayers(p_, c->layout, c->va, fmt2d, first, last, firstLayer, layers);
+    fx::emitGenerateLayers(p_, c->layout, c->va, fmt2d, first, last, firstLayer, layers, point);
     SWITCH_METAL_DIAGNOSTIC(dev_->stats.chainGenerates++);
     SWITCH_METAL_DIAGNOSTIC(dev_->stats.mipTwodLevels += last - first);
     SWITCH_METAL_DIAGNOSTIC(dev_->stats.mipTwodUnproven += unproven);

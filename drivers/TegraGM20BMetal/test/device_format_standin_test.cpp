@@ -365,6 +365,57 @@ TEST_F(DeviceFormatStandIn, AnSrgbTwoPlaneFormatOfADescriptorKeepsItsTexels)
     EXPECT_EQ(passes[1].second, gm20b::formatInfo(103)->rt) << "RG32Uint's target";
 }
 
+// BGR10_XR, BGRA10_XR and RGB10A8_2P_XR10 of a descriptor: the GM20B renders their codes as integers, which it cannot
+// blend, so a pass renders into an RGBA16Float stand-in, Metal's tile, which the load state fills with Metal's blend read
+// of the codes and the store state writes back into them viewed as R32Uint, RGBA16Uint or RG32Uint
+TEST_F(DeviceFormatStandIn, AnExtendedRangeTargetRendersThroughAHalfStandInIntoItsCodes)
+{
+    for (const uint32_t format : {554u, 552u, 550u}) {
+        SCOPED_TRACE(format);
+        EXPECT_EQ(gm20b::formatStandIn(format), 115u) << "RGBA16Float: Metal's tile holds the pass in halves";
+        EXPECT_STREQ(gm20b::formatLoadState(format), gm20b::xrTargetState(format, gm20b::XrStep::Load));
+        EXPECT_STREQ(gm20b::formatStoreState(format), gm20b::xrTargetState(format, gm20b::XrStep::Store));
+        addState(gm20b::formatLoadState(format), 115);
+        addState(gm20b::formatStoreState(format), gm20b::formatStoreView(format));
+        gm20b::Texture t;
+        ASSERT_TRUE(dev.createTexture(64, 32, format, t, true, true));
+        gm20b::CommandBuffer *cb = dev.begin();
+        ASSERT_NE(cb, nullptr);
+        const size_t first = kernel_model::model.jobs.size();
+        const char *why = nullptr;
+        gm20b::Texture *s = gm20b::formatStandInFor(dev, *cb, whole(t), 1, 0, true, &why);
+        ASSERT_NE(s, nullptr) << why;
+        const uint64_t standIn = s->va;
+        ASSERT_TRUE(gm20b::storeFormatStandIn(dev, *cb, whole(t), 1, *s, false, &why, true)) << why;
+        uint32_t seq = 0;
+        ASSERT_TRUE(cb->commit(seq));
+        std::vector<Launch> launches;
+        std::vector<Method> methods;
+        decode(first, launches, methods);
+        const auto passes = targets(methods);
+        ASSERT_EQ(passes.size(), 2u);
+        EXPECT_EQ(passes[0].first, standIn) << "the load state's pass into the stand-in";
+        EXPECT_EQ(passes[0].second, gm20b::formatInfo(115)->rt) << "RGBA16Float's target";
+        EXPECT_EQ(passes[1].first, t.va) << "the store state's pass into the codes";
+        EXPECT_EQ(passes[1].second, gm20b::formatInfo(gm20b::formatStoreView(format))->rt);
+    }
+    EXPECT_TRUE(gm20b::formatHoldsAlpha(552) && gm20b::formatHoldsAlpha(550));
+    EXPECT_FALSE(gm20b::formatHoldsAlpha(554)) << "a destination alpha of 1 (standin_blend.h)";
+}
+
+// A clear goes into such a stand-in as Metal's tile holds it: each channel's nearest half, BGR10_XR's alpha 1
+TEST(FormatStandIn, AnExtendedRangeClearIsItsHalves)
+{
+    const float clear[4] = {0.1f, -0.3f, 1.3f, 0.6f};
+    for (const uint32_t format : {550u, 552u, 554u}) {
+        float held[4];
+        gm20b::formatStandInClear(format, clear, held, true);
+        for (int k = 0; k < 3; k++)
+            EXPECT_EQ(held[k], float(_Float16(clear[k]))) << format << " " << k;
+        EXPECT_EQ(held[3], format == 554 ? 1.0f : float(_Float16(clear[3]))) << format;
+    }
+}
+
 // A turned target's stand-in is laid out as its plane (the pass draws into it turned: TurnedPass), so its fill and store are
 // passes of the plane as it lies: no turned viewport, no coordinate swizzle
 TEST_F(DeviceFormatStandIn, ATurnedTargetsStandInIsStoredAsThePlaneLies)

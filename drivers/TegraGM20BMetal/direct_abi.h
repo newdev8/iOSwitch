@@ -62,8 +62,7 @@ typedef enum NmbDirectSource : uint32_t {
     // a tessellation state's control stage: the encoder's factor buffer, the draw's patch and control-point index buffers
     NmbDirectTessFactors,
     NmbDirectPatchIndices,
-    NmbDirectControlPointIndices,
-    NmbDirectExtendedShadow  // an extended-range colour's half shadow (m2v WriteSource::ExtendedShadow), a storage image
+    NmbDirectControlPointIndices
 } NmbDirectSource;
 
 #define NMB_DIRECT_IMMUTABLE UINT32_MAX
@@ -130,7 +129,7 @@ typedef struct NmbDirectDraw {
     uint32_t writeCount;
     uint32_t pushMask;  // the push-constant words [0, 128) the draw writes, and their values
     uint32_t push[32];
-    uint32_t blendColorWord, halfBlendColorWord;  // push word + 1, zero when absent
+    uint32_t halfBlendColorWord;  // push word + 1, zero when absent
     uint32_t depthTestWord, stencilTestWord;
     uint32_t shadowStencilWord;  // m2v's ShadowStencilState (a fragment function's [[stencil]] output): push word + 1
     uint32_t pushHoles;          // push words the consumer fills with addresses
@@ -209,7 +208,6 @@ typedef struct NmbDirectState {
     uint32_t blended;  // the color attachments m2v hands a Vulkan blend, by index
     NmbDirectDraw draws
         [4];  // probe.mm's: 256, 16 and 4096 inline bytes per slot, and 256 bytes in buffers at each slot's own offset
-    bool twoPlane;  // compiled with each RGB10A8_2P_XR10 colour in its two planes (NmbDirectBinds::twoPlane)
 } NmbDirectState;
 
 // A sampler slot the probe binds a cubic sampler state at (MTLSamplerMinMagFilterCubic, no mip filter): its address
@@ -229,7 +227,6 @@ typedef struct NmbDirectTextureFormat {
 } NmbDirectTextureFormat;
 
 // What the probe binds beyond its tagged textures and samplers (the driver's cubic variants: cubic.h).
-// `twoPlane`: each RGB10A8_2P_XR10 attachment held in Metal's two planes (xr_pass.h)
 typedef struct NmbDirectBinds {
     const NmbDirectCubicSampler *cubic;
     uint32_t cubicCount;
@@ -237,9 +234,6 @@ typedef struct NmbDirectBinds {
     uint32_t textureCount;
     uint32_t fragmentTests;
     uint32_t bindStride;  // the attributeStride the probe binds every vertex buffer at (0: none)
-    bool twoPlane;
-    // the extended-range colours whose half shadow the draws' pass holds, bit n colour n (m2v BindState::extended_shadows)
-    uint32_t extendedShadows;
 } NmbDirectBinds;
 
 // A texture a kernel's dispatch binds at `slot`, as its MTLTextureDescriptor answers. `planes`: bit 0 an RGB10A8_2P_XR10
@@ -296,7 +290,7 @@ typedef struct NmbDirectKernel {
     // The push-constant words [0, 128) of the probe's three dispatches: inline bytes, buffers elsewhere, buffers off 16
     uint32_t pushMask, push[32], movedMask, moved[32], boundMask, bound[32];
     // The buffers-elsewhere dispatch ran on the same variant, specialization and set-0 plan (a plan the bind offsets
-    // change is refused at its compile: NativeMetalDirectCompute.rs record_residuals)
+    // change is refused at its compile: NativeMetalDirectComputeWords.rs record_residuals)
     bool movedSame;
     int32_t regionWord;  // the push word of m2v's DispatchRegion field, -1: none
     uint32_t regions;    // the plain dispatch's Vulkan dispatches

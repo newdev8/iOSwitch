@@ -36,12 +36,6 @@ template <size_t N> bool dynamicFieldsPlaced(const DynamicField (&fields)[N], ui
     return true;
 }
 
-inline bool validDynamicPush(uint32_t blend, uint32_t half, uint32_t pushMask, uint32_t tableWords = 0)
-{
-    const DynamicField fields[] = {{blend, 8}, {half, 4}};
-    return dynamicFieldsPlaced(fields, pushMask, tableWords);
-}
-
 // Where field `word` + 1 of `count` words lies in the words [first, first + words) at `at`; nullptr: outside them
 inline uint32_t *fieldWords(uint32_t *at, uint32_t first, uint32_t words, uint32_t word, uint32_t count)
 {
@@ -65,11 +59,8 @@ inline bool keyUsesBlendColor(const char *key)
 inline bool usableDynamicPush(const PackPipeline &p, const char *key)
 {
     const auto &tests = p.shaderTests;
-    const DynamicField fields[] = {{tests.depthWord, 4},
-                                   {tests.stencilWord, 4},
-                                   {p.blendColorWord, 8},
-                                   {p.halfBlendColorWord, 4},
-                                   {tests.reserved, 2}};
+    const DynamicField fields[] = {
+        {tests.depthWord, 4}, {tests.stencilWord, 4}, {p.halfBlendColorWord, 4}, {tests.reserved, 2}};
     // a shader-side stencil (its word in `reserved`) tests the stencil alone, against the encoder's faces
     const bool shadow = tests.reserved;
     if (tests.reservedTail || (tests.flags & ~3u) || bool(tests.flags & 1) != bool(tests.depthWord) ||
@@ -77,17 +68,15 @@ inline bool usableDynamicPush(const PackPipeline &p, const char *key)
         !dynamicFieldsPlaced(fields, p.pushMask, spillEntryOf(p, 1) ? p.spillWords[1] : 0))
         return false;
     if (!(p.flags & PipelinePushMetadata))
-        return !p.blendColorWord && !p.halfBlendColorWord && !tests.flags && !shadow && !keyUsesBlendColor(key);
+        return !p.halfBlendColorWord && !tests.flags && !shadow && !keyUsesBlendColor(key);
     return true;
 }
 
 // The blend colour's fields among the words [first, first + words) of the record's word space at `at`: the root's push
 // words from 0, the fragment stage's table from 32
-inline void patchBlendPush(const PackPipeline &p, const uint32_t color[4], const uint32_t extended[8], uint32_t *at,
-                           uint32_t first = 0, uint32_t words = 32)
+inline void patchBlendPush(const PackPipeline &p, const uint32_t color[4], uint32_t *at, uint32_t first = 0,
+                           uint32_t words = 32)
 {
-    if (uint32_t *w = fieldWords(at, first, words, p.blendColorWord, 8))
-        memcpy(w, extended, 8 * sizeof(uint32_t));
     if (uint32_t *w = fieldWords(at, first, words, p.halfBlendColorWord, 4))
         memcpy(w, color, 4 * sizeof(uint32_t));
 }

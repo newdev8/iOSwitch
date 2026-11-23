@@ -2,7 +2,8 @@
 // Part of ycbcr_store.metal, included in place after its one-plane word store functions, whose shapes and helpers it uses
 #pragma once
 
-// A target whose plane rows overlap (runtime/overlap_rows.h OverlapRows, overlapOrder and overlapWinner step for step):
+// A target whose plane rows overlap (runtime/overlap_rows.h OverlapRows, overlapOrder, copyOrder and overlapWinner step
+// for step; `copied`: a copy's stores in copyOrder):
 // each plane byte from the pool image of its rows' own texels, the row whose store lands last as an M4 Max stores a pass:
 // tiles of 64x32 frame texels from the last tile row up and each row's last tile back (at a quarter turn the 64-wide frame
 // column further left later, then the tile further down), a tile by 32-texel column, then 2x2 quad row, then quad column,
@@ -17,6 +18,7 @@ struct OverlapRows {
     uint masked;
     uint kept;
     uint pairs;
+    uint copied;
     Tiles tiles;
 };
 
@@ -34,6 +36,12 @@ static uint overlapOrder(uint x, uint y)
 {
     const uint tileRow = y / 32, tileColumn = x / 64;
     return (0x3ffu - tileRow) << 18 | (0xffu - tileColumn) << 10 | inTileOrder(x, y);
+}
+
+static uint copyOrder(uint x, uint y)
+{
+    return (0x3ffu - y / 32) << 18 | (0xffu - x / 32) << 10 | (y % 32 / 2) << 5 | (x % 32 / 2) << 1 |
+           ((y & 1) == 0 ? 1u : 0u);
 }
 
 static uint2 frameTexel(constant Tiles &t, uint x, uint y, uint across, uint down)
@@ -69,7 +77,8 @@ static bool overlapWinner(constant OverlapRows &s, Reach reach, uint a, thread u
         const uint off = a - r * s.pitch, x = off * s.across / s.texelBytes, y = r * s.down;
         if (off == s.kept || (s.masked != 0 && !overlapReached(reach, s, uint2(x, y))))
             continue;
-        const uint order = frameOrder(s.tiles, frameTexel(s.tiles, x, y, s.across, s.down));
+        const uint2 f = frameTexel(s.tiles, x, y, s.across, s.down);
+        const uint order = s.copied != 0 ? copyOrder(f.x, f.y) : frameOrder(s.tiles, f);
         if (!found || order > best) {
             found = true;
             best = order;

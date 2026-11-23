@@ -31,7 +31,6 @@
 #include "metallib_functions.h"
 #include "render_variant.h"
 #include "obtained.h"
-#include "TegraGM20BMetalXrShadow.h"
 
 namespace gm20b {
 template <typename T> class ComputeKernelJob;
@@ -321,8 +320,7 @@ struct SwitchMetalPass {
     bool shaderTestsDepth = false;
     bool xrPlaneBinds = false;  // it binds a two-plane RGB10A8_2P_XR10 texture, which a draw may store through
     bool continues =
-        false;              // a parallel encoder's sub-encoder after its first: the pass before it goes on (parallel.h)
-    uint8_t xrShadows = 0;  // the extended-range colours whose half shadow it holds (xr_shadow.h)
+        false;  // a parallel encoder's sub-encoder after its first: the pass before it goes on (parallel.h)
 };
 
 // A command buffer's setBytes data, written once where the GPU reads it: write-combined pool chunks the raw encode binds in place,
@@ -456,11 +454,6 @@ struct SwitchMetalSharedEventWait {
     SwitchMetalPassCachePtr _passCache;
     gm20b::GrowList<SwitchMetalPass> _passes;  // OpRender's (Cmd::x)
     uint32_t _recordedPass;                    // the OpRender the draws being recorded belong to
-    // extended-range shadows (TegraGM20BMetalXrShadow.h): the open render encoder's draws, the passes that hold shadows, and the
-    // one the raw encode is in (null: none)
-    SwitchMetalXrShadowOpen _xrShadowOpen;
-    std::vector<SwitchMetalXrShadowTwins> _xrShadowPasses;
-    const SwitchMetalXrShadowTwins *_xrShadowCurrent;
     bool
         _borderSamplers;  // a sampler of an opaque border was bound: its headers for the range's textures before the encode
     std::vector<SwitchMetalCounterMark> _counterMarks;  // in tape order
@@ -616,7 +609,7 @@ static inline void nameFailure(__unsafe_unretained SwitchMetalCommandBuffer *cb,
 // worker's own findings): what the encode reads that the recording may still change, or work it is not built for
 enum SwitchMetalPipelineVeto : uint32_t {
     VetoCounters = 1u << 1,    // counter samples
-    VetoShadows = 1u << 2,     // a texture sampled through a pool image, an extended-range stand-in or half shadow
+    VetoShadows = 1u << 2,     // a texture sampled through a pool image or an extended-range stand-in
     VetoVariant = 1u << 3,     // a binding of a state variant still being made, which an encode ahead would drop
     VetoProbes = 1u << 4,      // HW Test's probes
     VetoParallel = 1u << 5,    // a parallel render encoder's sub-encoders
@@ -698,7 +691,6 @@ struct SwitchMetalPreparedVariant {
     uint32_t _zeta;        // its depth/stencil attachment's format as the driver holds it (0: none)
     uint32_t _samples;     // its color attachments' samples a pixel
     uint8_t _turn;         // its turned attachments' rotation (rotation.h; 0: none)
-    bool _xrPlanes;        // it draws RGB10A8_2P_XR10 in its two planes (xr_pass.h): its states' " | xr2p" variants
     uint32_t _passAt;      // its pass's SwitchMetalPass (the command buffer's _passes)
     gm20b::DepthStencilDesc _ds;
     MTLRenderPassDescriptor *_pass;  // the command buffer's copy, which the raw encode reads

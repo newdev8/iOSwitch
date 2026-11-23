@@ -241,7 +241,7 @@ TEST(DevicePackEntries, ARecordOfAnEntryNoDrawCanWriteIsNotPlaced)
     gm20b::RuntimeRecord slot = narrowRecord(0x3c1), kind = narrowRecord(0x3c2), stage = narrowRecord(0x3c3),
                          offset = narrowRecord(0x3c4);
     slot.pipeline.entry[1].slot = gm20b::kStageBufferArguments;
-    kind.pipeline.entry[1].kind = uint8_t(gm20b::EntryXrShadow + 1);
+    kind.pipeline.entry[1].kind = uint8_t(gm20b::EntryTessBuffer + 1);
     stage.pipeline.entry[1].stage = 3;
     offset.pipeline.entry[1].offset = 256;
     const std::vector<gm20b::RuntimeRecord> records = {narrowRecord(0x3c0), slot, kind, stage, offset};

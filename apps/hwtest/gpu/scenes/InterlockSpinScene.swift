@@ -16,7 +16,12 @@ struct InterlockSpinScene: GPUScene {
         let kind = GM20BFacade.kind(of: gpu.device)
         let format = TexelFormat.rgba16Float
         let scale = FetchBlendState.scale(format)
-        let target = try gpu.texture(format.metal, Self.width, Self.height)
+        // Plain memory for both arms (a private target moves onto compressed memory once the facade has some): there the
+        // plain arm's ROP blends stay compressed and the interlocked arm's surface stores do not, and the 4x bound would
+        // weigh compression instead of the ticket wait
+        let target = try gpu.texture(
+            format.metal, Self.width, Self.height, usage: [.renderTarget, .shaderRead, .pixelFormatView]
+        )
         let points = try gpu.buffer(FetchBlendPipeline.quad)
         let tags = (0 ..< 16).map { SIMD4<Float>(0, 0, Float(($0 * 5 + 1) & 3), 0) }
         let instances = try gpu.buffer(tags)

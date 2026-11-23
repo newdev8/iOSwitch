@@ -40,55 +40,57 @@ TEST(GM20BDirectPush, EqualProbeBlendWordsStayDynamic)
     NmbDirectState state = {};
     for (auto &draw : state.draws) {
         draw.pushMask = UINT32_MAX;
-        draw.blendColorWord = 5;
         draw.halfBlendColorWord = 29;
     }
     EXPECT_TRUE(gm20b::validDynamicPush(state));
-    EXPECT_EQ(gm20b::constantPushWords(state), 0x0ffff00fu);
-    state.draws[3].blendColorWord = 6;
+    EXPECT_EQ(gm20b::constantPushWords(state), 0x0fffffffu);
+    state.draws[3].halfBlendColorWord = 25;
     EXPECT_FALSE(gm20b::validDynamicPush(state));
+}
+
+bool placed(uint32_t first, uint32_t firstCount, uint32_t second, uint32_t pushMask)
+{
+    const gm20b::DynamicField fields[] = {{first, firstCount}, {second, 4}};
+    return gm20b::dynamicFieldsPlaced(fields, pushMask, 0);
 }
 
 TEST(GM20BDirectPush, RejectsTruncatedOverlappingAndMissingFields)
 {
-    EXPECT_TRUE(gm20b::validDynamicPush(25, 1, UINT32_MAX));
-    EXPECT_FALSE(gm20b::validDynamicPush(26, 0, UINT32_MAX));
-    EXPECT_FALSE(gm20b::validDynamicPush(0, 30, UINT32_MAX));
-    EXPECT_FALSE(gm20b::validDynamicPush(5, 12, UINT32_MAX));
-    EXPECT_FALSE(gm20b::validDynamicPush(5, 0, UINT32_MAX & ~(1u << 11)));
-    EXPECT_FALSE(gm20b::validDynamicPush(UINT32_MAX, 0, UINT32_MAX));
+    EXPECT_TRUE(placed(25, 8, 1, UINT32_MAX));
+    EXPECT_FALSE(placed(26, 8, 0, UINT32_MAX));
+    EXPECT_FALSE(placed(0, 8, 30, UINT32_MAX));
+    EXPECT_FALSE(placed(5, 8, 12, UINT32_MAX));
+    EXPECT_FALSE(placed(5, 8, 0, UINT32_MAX & ~(1u << 11)));
+    EXPECT_FALSE(placed(UINT32_MAX, 8, 0, UINT32_MAX));
 }
 
-TEST(GM20BDirectPush, PatchesBothFieldsWithoutChangingOtherWords)
+TEST(GM20BDirectPush, PatchesTheBlendColourWithoutChangingOtherWords)
 {
     gm20b::PackPipeline pipeline = {};
-    pipeline.blendColorWord = 5;
     pipeline.halfBlendColorWord = 29;
     const uint32_t color[] = {0x3f800000, 0x80000000, 0x7fc00001, 0x3f000000};
-    const uint32_t extended[] = {1, 2, 3, 4, 5, 6, 7, 8};
     uint32_t push[32];
     std::fill_n(push, 32, 0xfeed);
-    gm20b::patchBlendPush(pipeline, color, extended, push);
+    gm20b::patchBlendPush(pipeline, color, push);
     for (unsigned i = 0; i < 32; i++)
-        EXPECT_EQ(push[i], i >= 4 && i < 12 ? extended[i - 4] : i >= 28 ? color[i - 28] : 0xfeed);
-    pipeline.blendColorWord = 17;
-    pipeline.halfBlendColorWord = 0;
-    gm20b::patchBlendPush(pipeline, color, extended, push);
-    EXPECT_EQ(push[16], extended[0]);
-    EXPECT_EQ(push[23], extended[7]);
-    EXPECT_EQ(push[28], color[0]);
+        EXPECT_EQ(push[i], i >= 28 ? color[i - 28] : 0xfeed);
+    pipeline.halfBlendColorWord = 17;
+    gm20b::patchBlendPush(pipeline, color, push, 16, 16);
+    EXPECT_EQ(push[0], color[0]);
+    EXPECT_EQ(push[3], color[3]);
+    EXPECT_EQ(push[4], 0xfeedu);
 }
 
 TEST(GM20BDirectPush, LegacyConstantBlendCannotReuseFrozenPush)
 {
     gm20b::PackPipeline pipeline = {};
-    const char *dynamic = "samples=1 topo=0 ds=0/0 c0=554:15:1:11:0:0:1:14:0";
+    const char *dynamic = "samples=1 topo=0 ds=0/0 c0=115:15:1:11:0:0:1:14:0";
     EXPECT_FALSE(gm20b::usableDynamicPush(pipeline, dynamic));
-    EXPECT_TRUE(gm20b::usableDynamicPush(pipeline, "samples=1 c0=554:15:0:11:0:0:1:14:0"));
-    EXPECT_TRUE(gm20b::usableDynamicPush(pipeline, "samples=1 c0=554:15:1:1:0:0:1:0:0"));
+    EXPECT_TRUE(gm20b::usableDynamicPush(pipeline, "samples=1 c0=115:15:0:11:0:0:1:14:0"));
+    EXPECT_TRUE(gm20b::usableDynamicPush(pipeline, "samples=1 c0=115:15:1:1:0:0:1:0:0"));
     pipeline.flags = gm20b::PipelinePushMetadata;
     EXPECT_TRUE(gm20b::usableDynamicPush(pipeline, dynamic));
-    pipeline.blendColorWord = 1;
+    pipeline.halfBlendColorWord = 1;
     EXPECT_FALSE(gm20b::usableDynamicPush(pipeline, dynamic));
     pipeline.pushMask = 255;
     EXPECT_TRUE(gm20b::usableDynamicPush(pipeline, dynamic));

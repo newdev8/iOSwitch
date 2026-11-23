@@ -33,6 +33,7 @@
 #include "compiler_sandbox.h"
 #include "compiler_store.h"
 #include "compiler_times.h"
+#include "../../../kits/SwitchRefusal/SwitchRefusal.h"
 #include "../cache_io.h"
 #include "../reflection_blob.h"
 #include "../compute_facts_entry.h"
@@ -208,6 +209,12 @@ int32_t Service::run(Work &work)
     if (result == TegraGM20BCompileFailed || result == TegraGM20BCompileUnavailable)
         os_log_error(logger(), "SwitchShaderCompiler: pid %d's state not made: %{public}s | %{public}.300s", asked.pid,
                      why.c_str(), p.key.key.c_str());
+    if (result == TegraGM20BCompileRefused) {
+        const RefusalLine line = refusalLine(p.request, asked.pid, why);
+        switch_refusal_k(
+            switch_refusal_key_with(switch_refusal_key("m2v", line.reason), switch_refusal_key(line.text.c_str(), "")),
+            "m2v", line.reason, "%s", line.text.c_str());
+    }
 #if SWITCH_DEBUG
     os_log(logger(),
            "SwitchShaderCompiler: %{public}s in %llu ms, queued %llu ms (class 0x%x) for pid %d: %{public}.400s",
@@ -384,7 +391,9 @@ void Service::open(uint64_t stack)
 }
 
 // The requests an earlier store was made from, made again as background work nobody waits for, one at a time: the pool
-// runs one background compile at once, and a queued request would hold its libraries' bytes until it ran. A store
+// runs one background compile at once, and a queued request would hold its libraries' bytes until it ran. One an
+// earlier build logged is made under this build's stack key, so the states a device made before a key moved are made
+// again rather than dropped; one of another layout, or whose fields this build keys otherwise, is dropped. A store
 // already holding one gets the record's program slots it lacks (a store written before they were kept, or one that
 // dropped them). A stored refusal this compiler build has not confirmed is made again too (compiler_refusals.h).
 void Service::warm(uint64_t stack)
@@ -395,7 +404,7 @@ void Service::warm(uint64_t stack)
     log_.replay([&](const std::string &request, gm20b::Digest &name) {
         Prepared prepared;
         std::string why;
-        if (!prepare(request, stack, system_, prepared, why)) {
+        if (!prepare(restacked(request, stack), stack, system_, prepared, why)) {
             dropped++;
             return false;
         }

@@ -382,39 +382,6 @@ TEST(GM20BStorage, RequiresOrderedControlAndExplicitRopExclusion)
     }
 }
 
-// The bridge hands a shadowed variant's draws the colour's storage image and its half shadow (NmbDirectExtendedShadow), a
-// second fragment storage image the storage form's contract does not count
-TEST(GM20BStorage, AShadowedVariantsDrawsQualifyBesideTheirShadow)
-{
-    State s;
-    NmbDirectWrite writes[2] = {s.write, s.write};
-    writes[1].binding = 1;
-    writes[1].source = NmbDirectExtendedShadow;
-    for (auto &draw : s.state.draws) {
-        draw.writes = writes;
-        draw.writeCount = 2;
-    }
-    gm20b::PackPipeline out = {};
-    EXPECT_EQ(gm20b::qualifyStorage(s.state, header, out), nullptr);
-    EXPECT_EQ(out.storageMask, 1);
-}
-
-// A " | xrsh=" variant's record (xr_shadow.h): the shadow of a colour it holds in its storage form is usable, one of a
-// colour it does not, or out of the fragment stage, is malformed
-TEST(GM20BStorage, AnExtendedRangeShadowIsBoundBesideItsColoursStorageForm)
-{
-    const uint32_t blob[] = {0x1224, 2, 0x1a00, 0};
-    auto p = pipeline();
-    gm20b::setEntryCount(p, 2);
-    p.entry[1] = {16, gm20b::EntryXrShadow, 2, 0, 0, 0, 0};
-    EXPECT_TRUE(gm20b::usableStorageMetadata(p, blob, 4, nullptr));
-    p.entry[1].slot = 1;
-    EXPECT_FALSE(gm20b::usableStorageMetadata(p, blob, 4, nullptr));
-    p.entry[1].slot = 0;
-    p.entry[1].stage = 1;
-    EXPECT_FALSE(gm20b::usableStorageMetadata(p, blob, 4, nullptr));
-}
-
 TEST(GM20BStorage, RejectsMalformedArtifact)
 {
     const uint32_t blob[] = {0x1224, 2, 0x1a00, 0};

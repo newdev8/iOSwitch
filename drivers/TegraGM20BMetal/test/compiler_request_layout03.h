@@ -2,7 +2,8 @@
 // A compile request's bytes in layout SWCREQ03, written field by field as compile_request.cpp wrote them at
 // 2dd3e358f, for the reader of a later layout to refuse. `merged`: as that writer would have with the vertex stage's
 // cubic bits (the sampler's flag bit 1, the texture slot's top bit) and the shadowed colours' byte after the test class
-// put in under the same magic.
+// put in under the same magic. The shadowed colours' and two-plane colours' bytes, which later layouts dropped, are
+// written as colour 0's.
 #pragma once
 #include <string>
 #include "../cache_io.h"
@@ -26,8 +27,8 @@ inline void writeVariant(gm20b::Writer &w, const gm20b::RenderVariant &v, bool m
     }
     w.value(v.fragmentTests);
     if (merged)
-        w.value(v.xrShadows);
-    w.value(uint8_t(v.twoPlane));
+        w.value(uint8_t(1));
+    w.value(uint8_t(1));
     w.value(v.xrSlots);
     w.value(uint32_t(v.written.size()));
     for (const gm20b::WrittenTexture &t : v.written) {

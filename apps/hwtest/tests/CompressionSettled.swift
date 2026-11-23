@@ -4,10 +4,9 @@ import HWTestGPU
 import Metal
 
 /// The facade's compression thread, waited for by its own event (drivers/TegraGM20BMetal/
-/// TegraGM20BMetalProbe.mm switchMetalProbeCompressionSettled:, debug builds): the block runs once every compressed memory asked
-/// of the thread so far is made or refused, at once on the caller's thread when none is asked. It covers compressed
-/// memory alone: the ZBC entries the same thread adds after it are not waited for. Past `bound` the event is taken as
-/// lost (a FAIL naming it), never waited for again.
+/// TegraGM20BMetalProbe.mm switchMetalProbeCompressionSettled:, debug builds): the block runs once every compressed memory
+/// and ZBC entry asked of the thread so far is made or refused, at once on the caller's thread when none is asked. Past
+/// `bound` the event is taken as lost (a FAIL naming it), never waited for again.
 public enum CompressionSettled {
     static let selector = NSSelectorFromString("switchMetalProbeCompressionSettled:")
     static let factsSelector = NSSelectorFromString("switchMetalProbeFacts:")
@@ -17,26 +16,44 @@ public enum CompressionSettled {
         /// A release facade or another device: no event to wait for
         case absent
         case settled(milliseconds: Double)
+        /// The facade did not take the ask: its answer
+        case refused(String)
         case never
+
+        /// The test failure a wait that did not settle is, nil where it settled or there is no event
+        public var failure: TestFailure? {
+            switch self {
+            case .absent, .settled: nil
+            case let .refused(why): TestFailure("the facade refused the compression-settled event: \(why)")
+            case .never: TestFailure("the compression thread never settled within \(Int(CompressionSettled.bound)) s")
+            }
+        }
     }
 
-    typealias Call = @convention(c) (AnyObject, Selector, @convention(block) () -> Void) -> Unmanaged<AnyObject>?
+    /// Asks the facade for the event, `settled` the block it calls: nil where it took the ask, else its answer. The block
+    /// goes as an object the facade may keep until the thread settles; lent as a closure to a cast of the method's IMP it
+    /// would be non-escaping, and Swift traps once the call returns with the facade still holding it.
+    static func ask(_ facade: NSObject, _ settled: @escaping () -> Void) -> String? {
+        let block: @convention(block) () -> Void = settled
+        guard let answer = facade.perform(selector, with: unsafeBitCast(block, to: AnyObject.self)) else { return nil }
+        let object = answer.takeUnretainedValue()
+        return object as? String ?? String(describing: object)
+    }
 
     public static func wait(_ device: MTLDevice) async -> Wait {
         guard let facade = device as? NSObject, facade.responds(to: selector) else { return .absent }
-        let call = unsafeBitCast(facade.method(for: selector), to: Call.self)
         let waiter = Waiter<Double>()
         let start = CFAbsoluteTimeGetCurrent()
-        let refusal = call(facade, selector) { waiter.resume((CFAbsoluteTimeGetCurrent() - start) * 1000) }
-        guard refusal == nil, let milliseconds = await waiter.wait(timeout: bound) else { return .never }
+        if let refusal = ask(facade, { waiter.resume((CFAbsoluteTimeGetCurrent() - start) * 1000) }) {
+            return .refused(refusal)
+        }
+        guard let milliseconds = await waiter.wait(timeout: bound) else { return .never }
         return .settled(milliseconds: milliseconds)
     }
 
-    /// `wait`, throwing where the event never came
+    /// `wait`, throwing where the event was refused or never came
     public static func settle(_ device: MTLDevice) async throws {
-        if await wait(device) == .never {
-            throw TestFailure("the compression thread never settled within \(Int(bound)) s")
-        }
+        if let failure = await wait(device).failure { throw failure }
     }
 
     /// What `make` makes, on compressed memory where the facade can bind some: a size's memory is made by the

@@ -81,18 +81,13 @@ bool SwitchMetalRangeEncode::storeOverlappingPlanes()
     return true;
 }
 
-// A pass fused into the open one (beginPass's continuing_) draws on the targets that one's begin laid out: a colour
-// its draws bind as storage takes its backing's compression from that use, and one bound as a 2D array a block-linear
-// backing (gm20b::CommandBuffer::render; a pitch target is no array). The pass after `open` binds no colour so that
-// `open` did not.
-static bool storageLaidOut(SwitchMetalCommandBuffer *cb, size_t open, size_t next)
+// A pass fused into the open one (beginPass's continuing_) draws on the targets that one's begin laid out: the colours
+// its draws bind as storage are taken where that layout holds them (gm20b::RenderEncoder::takeStorage)
+static bool storageLaidOut(SwitchMetalCommandBuffer *cb, gm20b::RenderEncoder &open, size_t next)
 {
-    gm20b::PassDesc a, b;
+    gm20b::PassDesc b;
     passStorageMasks(cb, next, b);
-    if (!b.storageMask)
-        return true;
-    passStorageMasks(cb, open, a);
-    return !(b.storageMask & ~a.storageMask) && !(b.arrayedStorageMask & ~a.arrayedStorageMask);
+    return !b.storageMask || open.takeStorage(b.storageMask, b.arrayedStorageMask);
 }
 
 // A Depth16Unorm a draw of the pass after `open` tests in its shader is the converted zeta only where `open` began it so
@@ -132,8 +127,8 @@ bool SwitchMetalRangeEncode::endEncoder(size_t at)
             const gm20b::FusionPass first = fusedAt_ == renderBegin_ ? fused_ : fusionPass(cb, renderBegin_, shadows);
             fused_ = fusionPass(cb, at + 1, shadows);
             fusedAt_ = at + 1;
-            if (gm20b::canFusePasses(first, fused_) && storageLaidOut(cb, renderBegin_, at + 1) &&
-                testedLaidOut(cb, renderBegin_, at + 1)) {
+            if (gm20b::canFusePasses(first, fused_) && testedLaidOut(cb, renderBegin_, at + 1) &&
+                storageLaidOut(cb, *re_, at + 1)) {
                 continuing_ = true;
                 return true;
             }
@@ -146,7 +141,6 @@ bool SwitchMetalRangeEncode::endEncoder(size_t at)
     counters_->ended(at);
     re_ = nullptr;
     be_ = nullptr;
-    cb->_xrShadowCurrent = nullptr;
     return true;
 }
 

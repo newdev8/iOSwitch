@@ -421,6 +421,24 @@ TEST(GM20BRotation, StandInsMoveEachTexelByTheAttachmentsOwnMaps)
                 }
 }
 
+struct Plane {
+    uint32_t width = 0, height = 0;
+    uint8_t rotation = 0;
+};
+
+// A turned texture's width and height are its plane's: a frame drawn into it lies within the plane turned back, as
+// gpu.x1.rotated_target's 96x64 and 90x60 frames over planes of each turn and their 4x resolves do
+TEST(GM20BRotation, AFrameLiesWithinATurnedPlanesFrame)
+{
+    for (const uint8_t turn : {1, 3, 4}) {
+        EXPECT_EQ(gm20b::frameWithin(Plane{64, 96, turn}, 96, 64), (Rect{0, 0, 96, 64})) << int(turn);
+        EXPECT_EQ(gm20b::frameWithin(Plane{60, 90, turn}, 90, 60), (Rect{0, 0, 90, 60})) << int(turn);
+        EXPECT_EQ(gm20b::frameWithin(Plane{64, 96, turn}, 128, 128), (Rect{0, 0, 96, 64})) << int(turn);
+    }
+    EXPECT_EQ(gm20b::frameWithin(Plane{96, 64, 2}, 96, 64), (Rect{0, 0, 96, 64}));
+    EXPECT_EQ(gm20b::frameWithin(Plane{40, 30, 0}, 96, 64), (Rect{0, 0, 40, 30}));
+}
+
 // The words a turned pass's draw state is: the swizzle, the viewport and the scissor through the kit, read back as methods
 TEST(GM20BRotation, MethodStreamOfATurnedPass)
 {

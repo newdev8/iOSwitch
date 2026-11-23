@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
-// A texture bound as a texture argument (gpu.h Texture, or any type of the same fields): whether a draw reads it from a
-// header of the driver's.
+// A texture bound as a texture argument (resources.h Texture, or any type of the same fields): whether a draw reads it
+// from a header of the driver's.
 #pragma once
 
 #include "srgb_pair.h"

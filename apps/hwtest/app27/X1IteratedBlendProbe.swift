@@ -13,9 +13,11 @@ import Metal
 /// the facade's source-over states set NOOP_SOURCE_RGBA_0000 (blend_kill.h), whose drop of a zero source is right for
 /// the common block's source-over but not for a program that ignores the destination (T-v2's pass arm kept the
 /// destination on its row of zero source, 510 fields up to 255 codes off). One arm a command buffer, journaled before it
-/// runs, NVN's own sequences first and the arms expected to be refused last; a refusal ends the arm, not the probe. The
-/// kernel reports no class error for those arms on the chip, so their pixels say what ran (`pixels=`): the destination
-/// untouched (dst), the common block's blend alone (common), the program's pass (pass), or none of them (other).
+/// runs, NVN's own sequences first; a refusal ends the arm, not the probe. An arm whose words the class may refuse reports
+/// what its pixels say ran (`pixels=`): the destination untouched (dst), the common block's blend alone (common), the
+/// program's pass (pass), or none of them (other). Per-target blend left on and the common block without a separate alpha
+/// are class errors at the draw, which kill the channel: 0x5d ITERATED_BLEND_WITH_PER_TARGET_BLEND and 0x5c
+/// ITERATED_BLEND_WITHOUT_SEPERATE_ALPHA at DRAW_VERTEX_ARRAY (seen on the device), so no arm sends them.
 enum X1IteratedBlendProbe {
     static let size = 256
     static let maxRefusals = 3
@@ -31,8 +33,6 @@ enum X1IteratedBlendProbe {
         var enable: UInt32 = 1
         var alphaDestFactor: UInt32 = oneMinusSourceAlpha
         var constants: [UInt16] = []
-        var perTargetOff = true
-        var separate: UInt32 = 1
         /// Whether the claim rests on this arm: its words decoded field by field against clb197.h here (overlay's and
         /// plus-clamped's are Ryujinx's words with formulas of ours: reported, not judged)
         var judged = true
@@ -77,15 +77,11 @@ enum X1IteratedBlendProbe {
             rgb: { s, sa, d, da in s * d + s * (1 - da) + d * (1 - sa) }
         ),
         Arm(name: "ends_in_pbr", program: [0x3000_1001], rgb: nil),
-        Arm(name: "per_target_left", program: [0x0000_2029], perTargetOff: false, rgb: nil),
-        Arm(name: "no_separate_alpha", program: [0x0000_2029], separate: 0, rgb: nil),
     ]
 
     static func words(_ arm: Arm) -> [(UInt32, UInt32)] {
-        var w: [(UInt32, UInt32)] = []
-        if arm.perTargetOff { w.append((perTarget, 0)) }
-        w += [
-            (separateAlpha, arm.separate), (colorOp, add), (colorSource, one), (colorDest, oneMinusSourceAlpha),
+        var w: [(UInt32, UInt32)] = [
+            (perTarget, 0), (separateAlpha, 1), (colorOp, add), (colorSource, one), (colorDest, oneMinusSourceAlpha),
             (alphaOp, add), (alphaSource, one), (alphaDest, arm.alphaDestFactor),
         ]
         for (j, c) in arm.constants.enumerated() {

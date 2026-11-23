@@ -236,8 +236,8 @@ def build(work: Path, links: Links, metal_abi: Path, context_header: Path) -> tu
 
     The mock GPU with nvdec on every submission, directpack and native-seed over the translation (beside the mock:
     rpath @executable_path) and the driver's own states: the YCbCr conversions (ycbcr.metal) and the extended-range
-    stand-ins (xr.metal), an iOS library like QuartzCore's, made after Core Animation's (directpack.mm PROBE_OWN_LIB).
-    Gives the tools made (PACK_TOOLS).
+    stand-ins (xr.metal, xr_target.metal), an iOS library like QuartzCore's, made after Core Animation's (directpack.mm
+    PROBE_OWN_LIB). Gives the tools made (PACK_TOOLS).
     """
     translate, compile_object = links
     # Source paths (Mesa's asserts' __FILE__) as /switch-ios/..., whichever checkout or sandbox this runs in: the tools
@@ -251,7 +251,9 @@ def build(work: Path, links: Links, metal_abi: Path, context_header: Path) -> tu
         objs.append(obj)
     run(['xcrun', 'clang', *cflags, '-c', HERE / 'mock_iokit.c', '-o', work / 'mock_iokit.o'])
     run(['xcrun', 'clang++', *cflags, '-std=c++17', '-c', HERE / 'cap.cpp', '-o', work / 'cap.o'])
-    run(['xcrun', 'clang++', *cflags, '-std=c++17', '-c', HERE / 'nvdec.cpp', '-o', work / 'nvdec.o'])
+    nvdec = ('nvdec', 'nvdec_copy', 'nvdec_text', 'nvdec_load', 'nvdec_state', 'nvdec_draw')
+    for unit in nvdec:
+        run(['xcrun', 'clang++', *cflags, '-std=c++17', '-c', HERE / f'{unit}.cpp', '-o', work / f'{unit}.o'])
     run(['xcrun', 'clang++', *cflags, '-std=c++17', '-c', HERE / 'nvdec_compute.cpp', '-o', work / 'nvdec_compute.o'])
     run(
         [
@@ -260,7 +262,7 @@ def build(work: Path, links: Links, metal_abi: Path, context_header: Path) -> tu
             '-dynamiclib',
             work / 'mock_iokit.o',
             work / 'cap.o',
-            work / 'nvdec.o',
+            *(work / f'{unit}.o' for unit in nvdec),
             work / 'nvdec_compute.o',
             *objs,
             '-framework',
@@ -363,15 +365,16 @@ def build(work: Path, links: Links, metal_abi: Path, context_header: Path) -> tu
         ],
         tuple(METAL / f'{name}.cpp' for name in (*DIRECT_RUNTIME, 'gm20b_cache', 'kernel_cache')),
     )
-    own = ('ycbcr', 'ycbcr_store', 'xr', 'resolve', 'mip', 'turn', 'stencil_bits', 'fmt', 'decode')
+    own = ('ycbcr', 'ycbcr_store', 'xr', 'xr_target', 'resolve', 'mip', 'turn', 'stencil_bits', 'fmt', 'decode')
     # resolve.metal's sums in sample order and its NaN tests kept; ycbcr_store.metal's NaN tests and half rounding;
-    # stencil_bits.metal's depth comparisons; fmt.metal's NaN tests and half rounding; decode.metal's integer decodes,
-    # which no fast-math rewrite may touch
+    # stencil_bits.metal's depth comparisons; fmt.metal's NaN tests and half rounding; xr_target.metal's NaN tests and
+    # its stores' comparisons with the tile; decode.metal's integer decodes, which no fast-math rewrite may touch
     exact = {
         'resolve': ['-fno-fast-math'],
         'ycbcr_store': ['-fno-fast-math'],
         'stencil_bits': ['-fno-fast-math'],
         'fmt': ['-fno-fast-math'],
+        'xr_target': ['-fno-fast-math'],
         'decode': ['-fno-fast-math'],
     }
     for name in own:

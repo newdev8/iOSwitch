@@ -27,8 +27,6 @@ use crate::spirv::ids::{GlobalId, Value};
 use crate::spirv::ir::{BinOp, ConstBits, Constant, ConvOp, GlslOp, Type};
 
 pub mod blend;
-pub(crate) mod blend_color;
-pub(crate) mod computed;
 pub use blend::Blend;
 pub(crate) mod table;
 pub use table::{declare, declare_padded, search};
@@ -206,74 +204,17 @@ pub fn decode(
     value_of_codes(fb, form, c, table, half)
 }
 
-/// Metal's tile value of raw texel `raw` of a color attachment of `form` (a framebuffer fetch's
-/// read; EVs XRR-rtp1-m3 and -m4, byte-identical, a `float` and a `half` read alike): a `vec4` of
-/// `f32`, red first, each lane a `half` value. The tile holds no color code above 1022: a linear
-/// form's code and `BGRA10_XR_sRGB`'s are clamped to 1022 and decoded ([`decode`]),
-/// `BGR10_XR_sRGB`'s and the two-plane twin's decoded and then clamped to the linear values of
-/// codes 0 and 1022, `[-384 / 510, 638 / 510]`; each lane is rounded to `half` with ties away from
-/// zero (only an `_sRGB` step can tie). Alpha is [`decode`]'s.
-pub fn tile_value(
-    fb: &mut FunctionBuilder<'_>,
-    form: ExtendedRange,
-    raw: Value,
-    table: Option<GlobalId>,
-) -> BResult<Value> {
-    let c = codes(fb, form, raw)?;
-    let by_code = !form.srgb() || matches!(form, ExtendedRange::Bgra10 { .. });
-    let c = match by_code {
-        true => {
-            let top = per_lane(fb, [1022, 1022, 1022, u32::MAX])?;
-            fb.glsl(GlslOp::UMin, &[c, top])?
-        }
-        false => c,
-    };
-    let v = value_of_codes(fb, form, c, table, false)?;
-    let v = match by_code {
-        true => v,
-        false => {
-            let lo = (-384.0f64 / 510.0) as f32;
-            let hi = (638.0f64 / 510.0) as f32;
-            let lo = per_lane_f(fb, [lo, lo, lo, f32::NEG_INFINITY])?;
-            let hi = per_lane_f(fb, [hi, hi, hi, f32::INFINITY])?;
-            fb.glsl(GlslOp::FClamp, &[v, lo, hi])?
-        }
-    };
-    to_half(fb, v, HalfRounding::NearestAway, table.is_some())
-}
-
-/// Metal's read of the tile memory of an attachment of `form` that holds `held` (a `vec4` of
-/// `f32`, red first, each lane a `half`: what the pass's clear, load or last write left there,
-/// the `half` shadow's texel): a fetch's value, and a blend's destination. Its color lanes are
-/// clamped to the blend's source range (`BGRA10_XR_sRGB`'s [`SRGB_SOURCE_RANGE`], every other
-/// form's [`SOURCE_RANGE`]), alpha to `[0, 1]`, a NaN to the low end (`blend::clamped`, the
-/// blend's own clamp of its source), and `BGR10_XR`'s alpha is one: the tile holds what a write
-/// wrote, unclamped, and stores its encode, but every read clamps (EV XSH-pxs-m4 on an Apple
-/// M4: unblended `half` writes past the range, NaNs and the infinities, each read back by a
-/// fetch and blended over, for every form; their codes are the writes' own encodes, code 1023
-/// for 2.0 where the read is 1022's value). [`tile_value`] of a texel's codes is such a read
-/// already.
-pub fn tile_read(fb: &mut FunctionBuilder<'_>, form: ExtendedRange, held: Value) -> BResult<Value> {
-    let read = blend::clamped(fb, held, source_range(form))?;
-    match form {
-        ExtendedRange::Bgr10 { .. } => {
-            let one = fsplat(fb, floats(), 1.0)?;
-            fb.vector_shuffle(read, one, &[0, 1, 2, 7])
-        }
-        _ => Ok(read),
-    }
-}
-
-pub(crate) use blend_color::{SOURCE_RANGE, SRGB_SOURCE_RANGE};
-
 /// The range Metal clamps a blend's `half` source color to before blending into an attachment
-/// of `form` ([`SOURCE_RANGE`], [`SRGB_SOURCE_RANGE`]).
-fn source_range(form: ExtendedRange) -> (f32, f32) {
-    match form {
-        ExtendedRange::Bgra10 { srgb: true } => SRGB_SOURCE_RANGE,
-        _ => SOURCE_RANGE,
-    }
-}
+/// of a linear form, `BGR10_XR_sRGB` or the two-plane `_sRGB` form: the linear values of codes 0
+/// and 1022, `-384 / 510` and `638 / 510`, rounded to `half`, nearest even (EV XRR-rtp1-m4: every
+/// one of the probe's 8,192 sources a NaN or beyond the range lands there, for each format):
+/// `-0.7529296875` and `1.2509765625`.
+pub(crate) const SOURCE_RANGE: (f32, f32) = (-1542.0 / 2048.0, 1281.0 / 1024.0);
+
+/// [`SOURCE_RANGE`] for `BGRA10_XR_sRGB`: the tile values of codes 0 and 1022 (the table's steps
+/// 384 and 638 over 8192 rounded to `half`, ties away from zero; EV XRR-rtp1-m4): `-0.52734375`
+/// and `1.6689453125`.
+pub(crate) const SRGB_SOURCE_RANGE: (f32, f32) = (-1080.0 / 2048.0, 1709.0 / 1024.0);
 
 /// [`decode`]'s value of the codes `c` ([`codes`]) of `form`.
 fn value_of_codes(
@@ -554,34 +495,6 @@ pub(crate) fn bfloat_stored(
     let code = fb.select(nan, quiet, code)?;
     let zero = splat(fb, u, 0)?;
     fb.vector_shuffle(code, zero, bfloat_lanes(form))
-}
-
-/// [`encode`] of `v` into a texel of a linear or `_sRGB` form that keeps the channels `kept`
-/// (red, green, blue, alpha) of `old`, the raw texel the write overwrites, as Metal's blended
-/// write under a write mask keeps them (EVs XRB-sw1-m4 and XRB-sw2-m4: every masked
-/// configuration, each texel): each kept channel's code as [`decode`] reads it (a color code as
-/// it is, 1023 too; `BGRA10_XR`'s alpha clamped to `[384, 894]`; a two-plane texel's alpha
-/// byte), packed as a write packs it: plane 0's and `BGR10_XR`'s top two bits as the write sets
-/// them (zeros and ones), `BGRA10_XR`'s six low bits zero.
-pub fn encode_keeping(
-    fb: &mut FunctionBuilder<'_>,
-    form: ExtendedRange,
-    v: Value,
-    table: Option<GlobalId>,
-    (old, kept): (Value, [bool; 4]),
-) -> BResult<Value> {
-    let new = linear_codes(fb, form, v, table)?;
-    let old = codes(fb, form, old)?;
-    let lanes: Vec<u32> = kept
-        .iter()
-        .zip(0..4u32)
-        .map(|(&kept, k)| match kept {
-            true => 4 + k,
-            false => k,
-        })
-        .collect();
-    let code = fb.vector_shuffle(new, old, &lanes)?;
-    pack(fb, form, code)
 }
 
 /// The codes a write of `v` (a `vec4` of `f32`, red first) to a slot of a linear or `_sRGB` form

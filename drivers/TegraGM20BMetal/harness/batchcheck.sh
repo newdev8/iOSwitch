@@ -20,7 +20,7 @@ for source in mme_fermi mme_fermi_sim; do
 done
 xcrun clang -O1 -g -Wall -Wextra -fsanitize=address,undefined -I "$TREE/drivers/TegraGM20B" \
     -c "$METAL/pack/mock_iokit.c" -o "$OUT/mock_iokit.o"
-for source in cap nvdec nvdec_compute; do
+for source in cap nvdec nvdec_copy nvdec_text nvdec_load nvdec_state nvdec_draw nvdec_compute; do
     xcrun clang++ "${FLAGS[@]}" -DNVDEC_TWOD -I "$TREE/drivers/TegraGM20B" \
         -c "$METAL/pack/$source.cpp" -o "$OUT/$source.o"
 done
@@ -32,6 +32,7 @@ for f in SwitchGM20BEmit3D SwitchGM20BEmitBarrier SwitchGM20BEmitIterated mesa/n
         -I "$TREE/third_party/mesa/src/nouveau/headers" -c "$TREE/kits/SwitchGM20BEmit/$f.c" -o "$OUT/kit_${f##*/}.o"
 done
 xcrun clang++ -dynamiclib -fsanitize=address,undefined "$OUT/mock_iokit.o" "$OUT/cap.o" "$OUT/nvdec.o" \
+    "$OUT/nvdec_copy.o" "$OUT/nvdec_text.o" "$OUT/nvdec_load.o" "$OUT/nvdec_state.o" "$OUT/nvdec_draw.o" \
     "$OUT/nvdec_compute.o" "$OUT/twod_sim.o" "$OUT/mme_fermi.o" "$OUT/mme_fermi_sim.o" "$OUT"/kit_*.o \
     -framework IOKit -framework CoreFoundation -install_name @rpath/libmock_iokit.dylib -o "$OUT/libmock_iokit.dylib"
 SOURCES=()

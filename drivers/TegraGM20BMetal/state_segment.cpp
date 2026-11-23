@@ -65,15 +65,15 @@ void matrixCall(std::vector<PushBody> &bodies, uint32_t *start, uint32_t *at, ui
         bodies.push_back(PushBody::resident(clampVa, clampWords, TegraGM20BPushNoPrefetch));
 }
 
-uint64_t appendBodies(PushBatches &pushes, const std::vector<PushBody> &bodies, const uint8_t *ringCpu, uint64_t ringVa)
+uint64_t appendBodies(PushBatches &pushes, const std::vector<PushBody> &bodies,
+                      const std::function<uint64_t(const uint32_t *)> &ringVa)
 {
     uint64_t words = 0;
     for (const PushBody &b : bodies) {
         if (b.va) {
             pushes.append({b.va, b.words, b.flags}, false);
         } else if (b.second > b.first) {
-            const uint64_t va = ringVa + uint64_t(reinterpret_cast<const uint8_t *>(b.first) - ringCpu);
-            pushes.append({va, uint32_t(b.second - b.first), 0});
+            pushes.append({ringVa(b.first), uint32_t(b.second - b.first), 0});
             if (b.incomplete)
                 pushes.back().flags |= TegraGM20BPushIncomplete;
             words += uint64_t(b.second - b.first);

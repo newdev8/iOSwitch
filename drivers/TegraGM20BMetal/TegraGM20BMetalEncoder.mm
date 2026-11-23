@@ -11,15 +11,6 @@
 #include "xr.h"
 #include "zeta_colour.h"
 
-// Whether the pass draws RGB10A8_2P_XR10 in its two planes (xr_pass.h). Where one cannot take them beside the pass's
-// other colours (no free index for its alpha plane, or a 550 of one image beside it), every 550 of the pass is drawn in one
-// image, its states' plain form (TegraGM20BMetalRangePass.mm beginPass)
-static void xrPlanesPassOf(SwitchMetalRenderEncoder *e, const gm20b::Texture *const colors[8])
-{
-    bool planes = false;
-    e->_xrPlanes = !gm20b::xrPlanesPass(colors, planes) && planes;
-}
-
 // A pass of the contents of one opened before (TegraGM20BMetalPassCache.h): its copy and facts, and what each pass of a command
 // buffer does again: the objects it names retained, its targets' GPU writes declared, their compression as it is now
 static id<MTLRenderCommandEncoder> openKeptPass(SwitchMetalCommandBuffer *cb, SwitchMetalRenderEncoder *e,
@@ -32,7 +23,6 @@ static id<MTLRenderCommandEncoder> openKeptPass(SwitchMetalCommandBuffer *cb, Sw
     e->_passAt = uint32_t(cb->_passes.size());
     SwitchMetalPass &facts = cb->_passes.emplace_back(kept.facts);
     facts.compressed = 0;
-    const gm20b::Texture *colors[8] = {};
     for (unsigned c = 0; c < 8; c++) {
         id t = facts.color[c].texture;
         if (!t)
@@ -41,8 +31,6 @@ static id<MTLRenderCommandEncoder> openKeptPass(SwitchMetalCommandBuffer *cb, Sw
         [cb retain:facts.color[c].resolve];
         if (SwitchMetalTexture *x = (SwitchMetalTexture *)t; [(id)x isKindOfClass:[SwitchMetalTexture class]]) {
             declareGpuWrites(x);
-            if (x->_gm20bOk)
-                colors[c] = &x->_raw;
             if (x->_gm20bOk && gm20b::xrForm(x->_raw.format) != gm20b::XrForm::None && x->_raw.comptags)
                 facts.compressed |= uint8_t(1u << c);
         }
@@ -62,7 +50,6 @@ static id<MTLRenderCommandEncoder> openKeptPass(SwitchMetalCommandBuffer *cb, Sw
         if ([(id)r isKindOfClass:[SwitchMetalTexture class]])
             declareGpuWrites(r);
     }
-    xrPlanesPassOf(e, colors);
     e->_visibility = kept.visibility;
     [cb retain:kept.visibility];
     std::copy(kept.formats.begin(), kept.formats.end(), e->_formats);
@@ -75,7 +62,6 @@ static id<MTLRenderCommandEncoder> openKeptPass(SwitchMetalCommandBuffer *cb, Sw
     m.obj = (__bridge void *)pass;
     m.x = e->_passAt;
     [cb record:m];
-    gm20bXrShadowBegin(cb, e, facts);
     return (id<MTLRenderCommandEncoder>)e;
 }
 
@@ -127,7 +113,6 @@ void gm20bOwnPass(SwitchMetalRenderEncoder *e)
     e->_samples = 1;
     if (const char *rule = gm20bPassShapeInvalid(pass))
         gm20bPassInvalid(self, PredPassAttLevel, pass.renderTargetArrayLength, 0, rule);
-    const gm20b::Texture *colors[8] = {};
     for (unsigned c = 0; c < 8; c++) {
         MTLRenderPassColorAttachmentDescriptor *a = pass.colorAttachments[c];
         id<MTLTexture> t = a.texture;
@@ -146,11 +131,8 @@ void gm20bOwnPass(SwitchMetalRenderEncoder *e)
         [self retain:t];
         [self retain:resolve];
         SwitchMetalTexture *x = (SwitchMetalTexture *)t;
-        if ([(id)x isKindOfClass:[SwitchMetalTexture class]]) {
+        if ([(id)x isKindOfClass:[SwitchMetalTexture class]])
             declareGpuWrites(x);
-            if (x->_gm20bOk)
-                colors[c] = &x->_raw;
-        }
         if (SwitchMetalTexture *r = (SwitchMetalTexture *)resolve; [(id)r isKindOfClass:[SwitchMetalTexture class]])
             declareGpuWrites(r);
         const bool standsIn = [(id)x isKindOfClass:[SwitchMetalTexture class]] && gm20bFormatTarget(x);
@@ -191,7 +173,6 @@ void gm20bOwnPass(SwitchMetalRenderEncoder *e)
             e->_samples = x->_raw.samples;
         }
     }
-    xrPlanesPassOf(e, colors);
     facts.depth = gm20bZetaAttachment(pass);
     facts.depthSlice = pass.depthAttachment.texture ? pass.depthAttachment.slice : pass.stencilAttachment.slice;
     facts.depthLoad = pass.depthAttachment.loadAction;
@@ -325,7 +306,6 @@ void gm20bOwnPass(SwitchMetalRenderEncoder *e)
     m.obj = (__bridge void *)pass;
     m.x = e->_passAt;
     [self record:m];
-    gm20bXrShadowBegin(self, e, facts);
     gm20bCounterMarks(self, e, pass);
     gm20bPlaceCounterMarks(self, e, _encAt, true);
     // A resolve's acceptance reads the command buffer's probe forms, so a pass that resolves is read again each time

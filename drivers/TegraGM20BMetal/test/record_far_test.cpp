@@ -78,7 +78,7 @@ TEST(RecordFar, ASetPastTheEncodersFiveHundredTwelveBytesIsMade)
 
 TEST(RecordFar, EveryArgumentOfTheWidestRenderPipelineFitsAndOneMoreIsRefused)
 {
-    EXPECT_EQ(gm20b::kSetEntriesMax, 350u + 28u);
+    EXPECT_EQ(gm20b::kSetEntriesMax, 350u + 20u);
     Parts held(gm20b::kSetEntriesMax), past(gm20b::kSetEntriesMax + 1);
     gm20b::RuntimeRecord out;
     std::string why;
@@ -87,7 +87,7 @@ TEST(RecordFar, EveryArgumentOfTheWidestRenderPipelineFitsAndOneMoreIsRefused)
     EXPECT_EQ(out.pipeline.entriesHigh, gm20b::kSetEntriesMax >> 8);
     EXPECT_EQ(gm20b::entriesOf(out)[gm20b::kSetEntriesMax - 1].offset, 16 * (gm20b::kSetEntriesMax - 1));
     EXPECT_FALSE(gm20b::assembleRecord(past.parts, kKey, gm20b::PackRules{}, out, why));
-    EXPECT_EQ(why, "more than 378 set-0 entries, every argument a render pipeline binds");
+    EXPECT_EQ(why, "more than 370 set-0 entries, every argument a render pipeline binds");
 }
 
 TEST(RecordFar, AnArgumentTablePastEntry254IsNamedWithItsHighByte)

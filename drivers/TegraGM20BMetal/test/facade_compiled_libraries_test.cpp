@@ -154,9 +154,10 @@ void sourceLibrary()
     options2.preprocessorMacros = @{@"TILE" : @16, @"NAME" : @"a b"};
     options2.fastMathEnabled = NO;
     compiler.made.warnings = "program_source:1:1: warning: unused variable";
+    error = [NSError errorWithDomain:MTLLibraryErrorDomain code:MTLLibraryErrorInternal userInfo:nil];
     id<MTLLibrary> warned = [device newLibraryWithSource:source options:options2 error:&error];
     EXPECT_TRUE(warned != nil);
-    EXPECT_EQ(error.code, NSInteger(MTLLibraryErrorCompileWarning)) << text(error);
+    EXPECT_TRUE(error == nil) << "a library made with warnings has no error, as Metal's: " << text(error);
     ASSERT_EQ(compiler.asked.size(), 2u);
     ASSERT_TRUE(gm20b::codegen::readSource(compiler.asked[1].codeGen, sent, options));
     EXPECT_NE(options.find("-fno-fast-math"), std::string_view::npos) << options;

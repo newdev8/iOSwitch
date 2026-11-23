@@ -41,9 +41,7 @@ struct ProbeTextures {
     CubicBinds cubic;  // the cubic samplers and the textures sampled through them (a state's cubic variant)
     uint8_t fragmentTests = 0;
     uint32_t bindStride = 0;  // the attributeStride every vertex buffer is bound at (0: none)
-    bool twoPlane = false;    // its RGB10A8_2P_XR10 colours in their two planes (xr_pass.h: its " | xr2p" variant)
     uint16_t xrSlots = 0;     // fragment slots it samples two-plane RGB10A8_2P_XR10 at (its " | xrs=" variant)
-    uint8_t xrShadows = 0;    // colours whose half shadow its pass holds (xr_shadow.h: its " | xrsh=" variant)
     // the formats of the textures it writes at these slots (written_textures.h: its " | wtex=" variant)
     std::vector<WrittenTexture> written;
 };

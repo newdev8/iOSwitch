@@ -38,11 +38,10 @@ std::string root()
 
 // The sample: every corpus state linking functions, a few of each other kind, a stride through the rest, a RenderBox
 // state's cubic and test-class variants as the device asked for them, the written-format variants the corpus names, Core
-// Animation states into b3a8 drawn in its two planes and one amplified, multisampled VectorKit ground states, kernels at
-// an edge of their grid, Core Animation states that may fetch their attachment over a depth attachment and multisampled
-// (their storage forms), RenderBox's plane_color writing an extended-range colour unblended in a pass that holds the
-// colour's half shadow (its " | xrsh=1" variant, a writer that reads no colour) into each extended-range format, and a
-// state of the function the build's libraries refuse (SWITCH_REFUSED_FRAGMENT_FUNCTION).
+// Animation state into b3a8 amplified, states blending an extended-range colour, multisampled VectorKit ground states,
+// kernels at an edge of their grid, Core Animation states that may fetch their attachment over a depth attachment and
+// multisampled (their storage forms), and a state of the function the build's libraries refuse
+// (SWITCH_REFUSED_FRAGMENT_FUNCTION).
 // Each kind is drawn from lines both crawls' libraries hold, but for the private linked functions, which only iOS 27's
 // libraries have.
 std::vector<std::string> sample()
@@ -58,7 +57,7 @@ std::vector<std::string> sample()
     };
     const std::regex linked(R"( \| (fp|vp|fl|vl) )"), msaa("samples=[24] "), depth("ds=(252|260)/"),
         samplers(R"( smp=\S)"), quartzKernel("^D .*QuartzCore"), atOrigin("edge=0,0,0 threads=0"),
-        unblendedXr(" c0=55[024]:15:0:");
+        blendedXr(" c0=55[0-5]:15:1:");
     const auto atAnEdge = [&](const std::string &l) {
         return std::regex_replace(l, atOrigin, "edge=7,3,0 threads=1");
     };
@@ -102,13 +101,9 @@ std::vector<std::string> sample()
         }
         if (l[0] == 'R' && l.find(" | wtex=") != std::string::npos)
             take("written", l, 2);
-        if (l[0] == 'R' && l.find("| f plane_color_fragment lib=") != std::string::npos &&
-            std::regex_search(l, unblendedXr))
-            for (const char *format : {"550", "552", "554"})
-                take("shadowed writer",
-                     std::regex_replace(l, unblendedXr, std::string(" c0=") + format + ":15:0:") + " | xrsh=1", 6);
+        if (l[0] == 'R' && std::regex_search(l, blendedXr))
+            take("extended range", l, 8);
         if (l[0] == 'R' && l.find(" c0=550:") != std::string::npos && l.find("QuartzCore") != std::string::npos) {
-            take("two planes", l + " | xr2p", 2);
             const std::string amplified =
                 std::regex_replace(l, std::regex(" \\| v "), " amp=2 | v ", std::regex_constants::format_first_only);
             take("amplified", amplified, 1);
@@ -315,13 +310,11 @@ TEST(CompilerCompileOnly, ItMakesARecordOfEveryKindTheSampleAsks)
     ASSERT_EQ(engine.size(), asked.size());
     switch_compiler::SystemLibraries system(root());
     std::map<std::string, size_t> covered;
+    const std::regex blendedXr(" c0=55[0-5]:15:1:");
     for (size_t i = 0; i < asked.size(); ++i) {
         const gm20b::CompileRequest &r = asked[i];
         if (engine[i].result == TegraGM20BCompileRefused)
             covered["refused"]++;
-        if (r.variant.xrShadows)
-            EXPECT_EQ(engine[i].result, TegraGM20BCompileMade)
-                << "a shadowed variant, which every state drawn into a held colour needs: " << r.key.substr(0, 300);
         if (engine[i].result != TegraGM20BCompileMade)
             continue;
         switch_compiler::Prepared p;
@@ -340,19 +333,11 @@ TEST(CompilerCompileOnly, ItMakesARecordOfEveryKindTheSampleAsks)
         covered["storage form"] += (record.pipeline.flags & gm20b::PipelineStorageMetadata) != 0;
         covered["cubic"] += !r.variant.cubic.empty();
         covered["test class"] += r.variant.fragmentTests != 0;
-        covered["two planes"] += r.variant.twoPlane;
         covered["written"] += !r.variant.written.empty();
-        covered["shadowed writer"] += r.variant.xrShadows != 0;
-        if (r.variant.xrShadows) {
-            const gm20b::SetEntries set = gm20b::entriesOf(record);
-            uint8_t bound = 0;
-            for (uint32_t k = 0; k < set.size(); k++)
-                if (set[k].kind == gm20b::EntryXrShadow && set[k].slot < 8)
-                    bound |= uint8_t(1u << set[k].slot);
-            EXPECT_FALSE(record.pipeline.flags & gm20b::PipelineBarrierForm) << r.key.substr(0, 300);
-            EXPECT_EQ(record.pipeline.storageMask & r.variant.xrShadows, r.variant.xrShadows) << r.key.substr(0, 300);
-            EXPECT_EQ(bound, r.variant.xrShadows) << r.key.substr(0, 300);
-        }
+        // its RGBA16Float stand-in, which the ROP blends: no storage form for the blend
+        covered["extended range blended by the ROP"] +=
+            std::regex_search(r.key, blendedXr) &&
+            !(record.pipeline.flags & (gm20b::PipelineStorageMetadata | gm20b::PipelineBarrierForm));
         covered["amplified"] += r.fields.amplification > 1;
         covered["multisampled"] += r.fields.samples > 1;
         covered["specialized"] += std::any_of(r.stages.begin(), r.stages.end(), [](const gm20b::RequestStage &s) {
@@ -362,8 +347,8 @@ TEST(CompilerCompileOnly, ItMakesARecordOfEveryKindTheSampleAsks)
             return s.tag == "fp" || s.tag == "vp";
         });
     }
-    for (const char *kind : {"render", "constexpr samplers", "storage form", "cubic", "test class", "two planes",
-                             "written", "shadowed writer", "multisampled", "specialized", "kernel",
+    for (const char *kind : {"render", "constexpr samplers", "storage form", "cubic", "test class", "written",
+                             "extended range blended by the ROP", "multisampled", "specialized", "kernel",
                              "kernel with textures and samplers", "region kernel"})
         EXPECT_GT(covered[kind], 0u) << "the sample made no " << kind << " record";
 #if SWITCH_LIBRARIES_LINK_PRIVATE_FUNCTIONS

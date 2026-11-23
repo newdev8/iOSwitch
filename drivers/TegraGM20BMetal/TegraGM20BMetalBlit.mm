@@ -113,6 +113,17 @@ bool bufferCopy(__unsafe_unretained SwitchMetalCommandBuffer *cb, const char *ca
         failNoImage(cb, call);
         return false;
     }
+    if (t->_descriptor.sampleCount > 1) {
+        SwitchMetalTexture *owner = t->_levelsOwner ?: t;
+        bool made;
+        @synchronized(owner) {
+            made = gRM->raw->sampleRows(owner->_raw);
+        }
+        if (!made) {
+            failNoStencilTemp(cb, call);
+            return false;
+        }
+    }
     return true;
 }
 }  // namespace

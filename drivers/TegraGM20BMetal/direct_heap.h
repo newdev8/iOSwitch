@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // What a state's reads through argument buffers take of a draw (heap_tables.h), read from m2v's plans of the probe draws
-// (NativeMetalDirect.rs holes_of, heap_of) for its record: each stage's root-table and ExecutionStatus address words, the
-// buffer slots its root table holds, and its set-1 heap arrays in NVK's layout.
+// (NativeMetalDirectDraw.rs holes_of, NativeMetalDirectLayout.rs heap_of) for its record: each stage's root-table and
+// ExecutionStatus address words, the buffer slots its root table holds, and its set-1 heap arrays in NVK's layout.
 #pragma once
 #include <cstring>
 #include <string>

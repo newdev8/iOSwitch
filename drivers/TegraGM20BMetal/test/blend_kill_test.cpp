@@ -193,6 +193,18 @@ TEST(BlendKill, DestinationFactorsOnlyOnNormalizedTargets)
     EXPECT_EQ(decide(under), gm20b::kNoopSourceRgba0000);
 }
 
+// An extended-range target renders into its RGBA16Float stand-in, which the ROP blends: a float target's rule
+TEST(BlendKill, AnExtendedRangeTargetTakesItsFloatStandInsRule)
+{
+    for (const uint32_t format : {550u, 552u, 553u, 554u}) {
+        State over;
+        over.format = format;
+        EXPECT_EQ(decide(over), gm20b::kNoopSourceRgba0000) << format;
+        over.rgb = over.alpha = {kAdd, kInvDstAlpha, kOne};
+        EXPECT_EQ(decide(over), gm20b::kNoopNever) << format;
+    }
+}
+
 TEST(BlendKill, OnBesideADepthOrStencilAttachment)
 {
     for (const char *ds : {"252/0", "0/253", "260/260"}) {
@@ -219,9 +231,6 @@ TEST(BlendKill, OffForEveryOtherShapeOfState)
     State storage;
     storage.storage = 1;
     EXPECT_EQ(decide(storage), gm20b::kNoopNever);
-    State extended;
-    extended.format = 552;  // BGRA10_XR
-    EXPECT_EQ(decide(extended), gm20b::kNoopNever);
     State partialMask;
     partialMask.writes[0] = 0x0111;
     EXPECT_EQ(decide(partialMask), gm20b::kNoopSourceRgba0000);

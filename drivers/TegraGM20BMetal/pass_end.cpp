@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// See gpu.h (RenderEncoder::end: the pass prologue, its targets and clears).
+// See render_encoder.h (RenderEncoder::end: the pass prologue, its targets and clears).
 #include "lock.h"
 #include "clear.h"
 #include "clear_box.h"
@@ -302,7 +302,13 @@ void RenderEncoder::end()
     // ahead of the depth clear, which sets the region, or the load of a stored one; over the plane the pass renders (a
     // turned drawable's own axes, zcullBegin)
     if (zcull_.candidate) {
-        zcullRegionWords(p, zcull_.region, zs.texture->format, zcull_.dir, zcull_.storage, zcull_.storageBytes);
+        uint32_t criterion = 0;
+#if SWITCH_METAL_DIAGNOSTICS
+        if (const uint32_t c = d.probeZcullCriterion.load(std::memory_order_relaxed))
+            criterion = zcullCriterion(c & 0xff, c >> 8 & 0xff, c >> 16 & 0xff);
+#endif
+        zcullRegionWords(p, zcull_.region, zs.texture->format, zcull_.dir, zcull_.storage, zcull_.storageBytes,
+                         criterion);
         if (zcull_.load)
             p.m(kLoadZcull, 0);
         SWITCH_METAL_DIAGNOSTIC(d.stats.zcullPasses++; d.stats.zcullLoads += zcull_.load);
@@ -332,14 +338,12 @@ void RenderEncoder::end()
     zetaClearValues(p, zsBits & 1, zs.depth, zsBits & 2, zs.stencil);
     if (zsBits & 1)
         d.clearZbcDepth(*zs.texture, areaW_ >= zs.texture->width && areaH_ >= zs.texture->height, zs.depth);
-    // a mixed pass's zeta cleared in its own sample layout, then the colour's under target-independent rasterisation
-    if (rasterSamples_ > samples_) {
-        sampleWords(p, rasterSamples_, d.root_.va, pass_.positions, rot_);
-        if (zsBits)
-            clearZeta(p, planeArea(), zsBits, 0, layers);
-        zsBits = 0;
-        tirOn(p, rasterSamples_);
-    }
+    // A mixed pass's colour is cleared with its zeta deselected and target-independent rasterisation off: under the mode,
+    // beside the four-sample zeta, its CLEAR_SURFACE is class error 0x124 (INVALID_TIR_COMBINATION02, gv100
+    // dev_graphics.ref.txt; gpu.gm20b.mixed_samples on the device). The zeta is cleared in its own sample layout after.
+    const bool mixed = rasterSamples_ > samples_;
+    if (mixed)
+        p.m(ZT_SELECT, 0);
     for (const Clear &c : cl) {
         if (c.own)
             continue;
@@ -348,9 +352,17 @@ void RenderEncoder::end()
         clearWords(t->format, c.value, v, !called_ && t->compressed);
         const Rect r = planeRect(c.x0, c.y0, c.x1, c.y1);
         d.clearZbc(*t, !r.x0 && !r.y0 && r.x1 >= t->width && r.y1 >= t->height, v);
-        const bool area = !c.x0 && !c.y0 && c.x1 == areaW_ && c.y1 == areaH_;
+        const bool area = !mixed && !c.x0 && !c.y0 && c.x1 == areaW_ && c.y1 == areaH_;
         clearRect(p, r.x0, r.y0, r.x1, r.y1, v, c.target, area ? zsBits : 0, layers);
         zsBits = area ? 0 : zsBits;
+    }
+    if (mixed) {
+        p.m(ZT_SELECT, 1);
+        sampleWords(p, rasterSamples_, d.root_.va, pass_.positions, rot_);
+        if (zsBits)
+            clearZeta(p, planeArea(), zsBits, 0, layers);
+        zsBits = 0;
+        tirOn(p, rasterSamples_);
     }
     if (zsBits)
         clearZeta(p, planeArea(), zsBits, 0, layers);
@@ -362,7 +374,9 @@ void RenderEncoder::end()
     cb_->segment(start, p.at);
     d.push_.head = uint64_t(reinterpret_cast<uint8_t *>(p.at) - d.push_.bo.cpu);
     SWITCH_METAL_ENCODE_END(prologueSpan);
-    [[maybe_unused]] const uint64_t bodyWords = appendBodies(cb_->segments_, bodies_, d.push_.bo.cpu, d.push_.bo.va);
+    [[maybe_unused]] const uint64_t bodyWords = appendBodies(cb_->segments_, bodies_, [&d](const uint32_t *word) {
+        return d.pushVa(word);
+    });
     SWITCH_METAL_DIAGNOSTIC(d.stats.pushBytes += (bodyWords + uint64_t(p.at - start)) * 4);
     bodies_.clear();
     // shadow targets the pass stores: their pool images back over what it rendered (the render area; a Clear's reach past it),

@@ -81,6 +81,8 @@ bool Device::createCompressedTexture(uint32_t width, uint32_t height, uint32_t f
     ask.compressKind = kind;
     noteCompressed(ask, bo, bl.bytes, t);
     writeTic(t);
+    SWITCH_METAL_DIAGNOSTIC(t.heldBytes = bl.bytes);
+    SWITCH_METAL_DIAGNOSTIC(stats.textureBytes += bl.bytes);
     return true;
 }
 
@@ -98,6 +100,8 @@ bool Device::createCompressedZeta(uint64_t bytes, uint32_t kind, Texture &t)
     t.comptags = true;
     compZeta_[bo.va] = {bo, kind};
     writeTic(t);
+    SWITCH_METAL_DIAGNOSTIC(t.heldBytes = bytes);
+    SWITCH_METAL_DIAGNOSTIC(stats.textureBytes += bytes);
     privateMade_.store(privateMade_.load(std::memory_order_relaxed) + 1, std::memory_order_relaxed);
     return true;
 }
@@ -211,6 +215,18 @@ bool Device::wantCompressed(const Texture &t, uint32_t kind, void *owner)
     if (comp_.fit(compBytes(w.bytes), kind) != comp_.ready.end())
         privateMoveDue_.store(true, std::memory_order_relaxed);
     return true;
+}
+
+bool Device::wantsCompressed(const Texture &t)
+{
+    std::lock_guard<gm20b::Mutex> l(lock_);
+    return privateWants_.count(&t) != 0;
+}
+
+void Device::keepPlain(const Texture &t)
+{
+    std::lock_guard<gm20b::Mutex> l(lock_);
+    privateWants_.erase(&t);
 }
 
 void Device::privateMoves(void (*take)(void *owner))
@@ -344,6 +360,9 @@ bool Device::compressedFromPlain(Texture &t)
     }
     SWITCH_METAL_DIAGNOSTIC(stats.privateCompressedMoves++);
 #if SWITCH_METAL_DIAGNOSTICS
+    if (glassMem)
+        for (const uint32_t tic : movedPlain_.back().tics)
+            glassMem->rewriting(tic, true);
     os_log(OS_LOG_DEFAULT, "SwitchMetal: private %ux%u f%u moved to compressed memory kind 0x%x (%llu KiB)", t.width,
            t.height, t.format, kind, (unsigned long long)(bo.bytes >> 10));
 #endif
@@ -369,6 +388,11 @@ void Device::freeMovedPlain()
         else
             freeSpan(it->span, Memory::Bl, none);
         freeSpan(it->headers.span, it->headers.wc ? Memory::Wc : Memory::Pool, it->headers.lease);
+#if SWITCH_METAL_DIAGNOSTICS
+        if (glassMem)
+            for (const uint32_t tic : it->tics)
+                glassMem->rewriting(tic, false);
+#endif
         it = movedPlain_.erase(it);
     }
 }

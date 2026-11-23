@@ -210,6 +210,15 @@ bool SystemLibraries::air(const std::string &path, std::map<std::string, gm20b::
     return true;
 }
 
+std::string restacked(const std::string &bytes, uint64_t stack)
+{
+    gm20b::CompileRequest r;
+    if (!gm20b::decodeRequest(bytes, r))
+        return bytes;
+    r.stack = stack;
+    return gm20b::encodeRequest(r);
+}
+
 bool prepare(const std::string &bytes, uint64_t stack, SystemLibraries &system, Prepared &out, std::string &why)
 {
     Prepared p;
@@ -250,6 +259,49 @@ bool prepare(const std::string &bytes, uint64_t stack, SystemLibraries &system, 
     p.name = gm20b::storeName(p.key, p.request, identities);
     out = std::move(p);
     return true;
+}
+
+RefusalLine refusalLine(const gm20b::CompileRequest &r, int32_t pid, const std::string &why)
+{
+    const auto named = [&](size_t i) {
+        const gm20b::RequestStage &s = r.stages[i];
+        return s.name.empty() || s.name == s.function ? s.function : s.name + " (" + s.function + ")";
+    };
+    const bool render = r.kind == gm20b::RequestKind::Render ||
+                        (r.kind == gm20b::RequestKind::Reflection && !gm20b::computeReflection(r));
+    RefusalLine line{"state", ""};
+    std::string what;
+    if (r.kind == gm20b::RequestKind::Library) {
+        line.reason = "library";
+        what = "library of front end request type " + std::to_string(r.codeGenType);
+    } else if (r.stages.empty()) {
+        what = "request of no function";
+    } else if (gm20b::functionAttributes(r)) {
+        line.reason = "attributes";
+        what = "attributes of " + named(0);
+    } else if (gm20b::bufferEncoders(r)) {
+        line.reason = "encoders";
+        what = "buffer encoders of " + named(0);
+    } else {
+        line.reason = r.kind == gm20b::RequestKind::Reflection ? "reflection"
+                      : r.kind == gm20b::RequestKind::Kernel   ? "kernel"
+                      : r.kind == gm20b::RequestKind::Facts    ? "facts"
+                                                               : "state";
+        what = r.kind == gm20b::RequestKind::Reflection ? "reflection of "
+               : render                                 ? "render state of "
+               : r.kind == gm20b::RequestKind::Kernel   ? "kernel "
+                                                        : "compute state of ";
+        what += named(0);
+        if (const size_t f = render ? gm20b::fragmentStage(r) : gm20b::kNoStage; f != gm20b::kNoStage)
+            what += " and " + named(f);
+        if (r.kind == gm20b::RequestKind::Kernel)
+            what += " at " + std::to_string(r.kernel.threads[0]) + "," + std::to_string(r.kernel.threads[1]) + "," +
+                    std::to_string(r.kernel.threads[2]) + " threads";
+        if (!render && r.stages.size() > 1)
+            what += " with " + std::to_string(r.stages.size() - 1) + " linked functions";
+    }
+    line.text = "pid " + std::to_string(pid) + "'s " + what + " refused: " + why;
+    return line;
 }
 
 }  // namespace switch_compiler

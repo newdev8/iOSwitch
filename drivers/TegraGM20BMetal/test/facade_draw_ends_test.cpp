@@ -194,7 +194,6 @@ void everyRefusalFailsItsCommandBuffer()
         {{gm20b::RefDepthStencil, 252, gm20b::kShaderTestStencil, 1}, "draw.depth_stencil", kInternal},
         {{gm20b::RefStorageSamples, 0, 70, 4}, "draw.storage_samples", kInternal},
         {{gm20b::RefStorageView, 0, 115, 64}, "draw.storage_view", kInternal},
-        {{gm20b::RefXrShadow, 0}, "draw.xr_shadow", kInternal},
         {{gm20b::RefSamplerHeader, 0, 1, 0}, "draw.sampler_header", kInternal},
         {{gm20b::RefMatrixUniform, 3, 0, 16}, "draw.matrix_uniform", kInternal},
         // a turned draw whose turned fragment program found no room in the shader heap (device_room_test.cpp)

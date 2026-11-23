@@ -338,13 +338,16 @@ MTLTextureDescriptor *rendered(uint32_t format, NSUInteger side)
 // RGB10A8_2P_XR10 and its sRGB twin written over one plane alone, a 'w30r' surface's or plane 1 of a b3a8 one: held in
 // that plane as one over two planes is, its words the plane's rows, its alpha a memoryless target whose header is over a
 // sparse range of the texture's own, which reads 0 and drops stores (an M4 Max stores no alpha there and reads it 0). A
-// pass into one renders its words into the rows.
+// pass into one stores its stand-in's words into the rows.
 void writtenOverOnePlaneIsHeldInIt()
 {
     kernel_model::model.infoFlags = TegraGM20BInfoSparse;
-    id<MTLDevice> device = open(writePack(packKey(MTLPixelFormatBGRA8Unorm), {}, {}, true, "",
-                                          {{"raw.xr.xr_two_planes_frag", MTLPixelFormatRGBA16Float},
-                                           {"raw.xr.xr_two_planes_srgb_frag", MTLPixelFormatRGBA16Float}}));
+    id<MTLDevice> device =
+        open(writePack(packKey(MTLPixelFormatBGRA8Unorm), {}, {}, true, "",
+                       {{"raw.xr.xr_two_planes_frag", MTLPixelFormatRGBA16Float},
+                        {"raw.xr.xr_two_planes_srgb_frag", MTLPixelFormatRGBA16Float},
+                        {gm20b::xrTargetState(550, gm20b::XrStep::Load, 1, true), MTLPixelFormatRGBA16Float},
+                        {gm20b::xrTargetState(550, gm20b::XrStep::Store, 1, true), MTLPixelFormatR32Uint}}));
     ASSERT_TRUE(device != nil);
     IOSurfaceRef one = IOSurfaceCreate((__bridge CFDictionaryRef) @{
         (id)kIOSurfaceWidth : @64,

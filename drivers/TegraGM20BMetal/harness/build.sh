@@ -21,7 +21,11 @@ for f in mme_fermi mme_fermi_sim; do xcrun clang -O2 -std=c11 -w -I "$METAL/pack
 xcrun clang -O1 -Wall -c -I "$TREE/drivers/TegraGM20B" "$METAL/pack/mock_iokit.c" -o "$OUT/mock_iokit.o"
 xcrun clang++ "${FLAGS[@]}" -c -I "$TREE/drivers/TegraGM20B" "$METAL/pack/cap.cpp" -o "$OUT/cap.o"
 # the mock's decoder runs the 2D engine's blits too (fx/test/twod_sim: the mip chains)
-xcrun clang++ "${FLAGS[@]}" -DNVDEC_TWOD -I "$TREE/drivers/TegraGM20B" -c "$METAL/pack/nvdec.cpp" -o "$OUT/nvdec.o"
+NVDEC=()
+for f in nvdec nvdec_copy nvdec_text nvdec_load nvdec_state nvdec_draw; do
+    xcrun clang++ "${FLAGS[@]}" -DNVDEC_TWOD -I "$TREE/drivers/TegraGM20B" -c "$METAL/pack/$f.cpp" -o "$OUT/$f.o"
+    NVDEC+=("$OUT/$f.o")
+done
 xcrun clang++ "${FLAGS[@]}" -I "$TREE/drivers/TegraGM20B" -c "$METAL/pack/nvdec_compute.cpp" -o "$OUT/nvdec_compute.o"
 xcrun clang++ "${FLAGS[@]}" -c "$METAL/fx/test/twod_sim.cpp" -o "$OUT/twod_sim.o"
 # kits/SwitchGM20BEmit's emitters, which gpu.cpp and transfer.cpp call, in the mock library every harness links (their
@@ -30,7 +34,7 @@ for f in SwitchGM20BEmit3D SwitchGM20BEmitBarrier SwitchGM20BEmitIterated Switch
 xcrun clang -O2 -std=c11 -DNDEBUG -I "$TREE/kits/SwitchGM20BEmit/mesa" -I "$TREE/bazel-bin/kits/SwitchGM20BEmit/gen" \
         -I "$TREE/third_party/mesa/src/nouveau/headers" -c "$TREE/kits/SwitchGM20BEmit/$f.c" -o "$OUT/kit_${f##*/}.o"
 done
-xcrun clang++ -dynamiclib "$OUT/mock_iokit.o" "$OUT/cap.o" "$OUT/nvdec.o" "$OUT/nvdec_compute.o" "$OUT/twod_sim.o" "$OUT/mme_fermi.o" "$OUT/mme_fermi_sim.o" "$OUT"/kit_*.o -framework IOKit \
+xcrun clang++ -dynamiclib "$OUT/mock_iokit.o" "$OUT/cap.o" "${NVDEC[@]}" "$OUT/nvdec_compute.o" "$OUT/twod_sim.o" "$OUT/mme_fermi.o" "$OUT/mme_fermi_sim.o" "$OUT"/kit_*.o -framework IOKit \
     -framework CoreFoundation -install_name @rpath/libmock_iokit.dylib -o "$OUT/libmock_iokit.dylib"
 OBJC=(-O2 -g -std=c++17 -fobjc-arc -Wno-deprecated-declarations -DSWITCH_METAL_HARNESS_MARKS -I "$TREE/bazel-bin" -I "$TREE/kits/SwitchGM20BEmit/mesa" -I "$TREE/bazel-bin/kits/SwitchGM20BEmit/gen" -I "$TREE/third_party/mesa/src/nouveau/headers" -I "$TREE/drivers/TegraGM20BMetal/plugin" -I "$METAL_ABI" -I "$TREE/drivers/TegraGM20B" -I "$TREE/bazel-bin/kits/SwitchGM20B" "${COMPAT[@]}")
 # the runtime's completion of states the pack lacks (TegraGM20BMetalComplete.mm, TegraGM20BMetalDirect.mm; completed.cpp beside gpu.cpp)

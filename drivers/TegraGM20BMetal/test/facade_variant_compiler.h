@@ -120,7 +120,7 @@ struct RenderCompiler {
                 record.pipeline.setBytes = 48;
                 record.pipeline.memoryEntries = 7;
             }
-            record.pipeline.flags = request.variant.twoPlane ? gm20b::PipelineTwoPlane : 0;
+            record.pipeline.flags = 0;
             for (auto &range : record.pipeline.uniform)
                 range.entry = gm20b::kNoUniform;
             for (uint32_t stage = 0; stage < 2; stage++) {
@@ -134,8 +134,6 @@ struct RenderCompiler {
                     if (texture.stage == stage + 1)
                         program.image[81] = uint8_t(texture.format);
                 program.image[82] = request.variant.fragmentTests;
-                program.image[83] = request.variant.twoPlane;
-                program.image[84] = request.variant.xrShadows;
                 program.id = std::to_string(gm20b::Pack::fnv(program.image.data(), program.image.size()));
                 program.gprs = 8;
                 program.cbufTypes = {gm20b::CbufRoot, gm20b::CbufSet};

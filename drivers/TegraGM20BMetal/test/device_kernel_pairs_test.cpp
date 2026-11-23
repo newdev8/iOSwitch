@@ -110,8 +110,8 @@ TEST_F(DeviceKernelPairs, AnEdgeSamplerOfAConvertedTextureKeepsItsHeader)
 
 TEST_F(DeviceKernelPairs, ARecordCompiledUnderTheMapIsDispatchedAsMade)
 {
-    // the direct compile under the texture's map (NativeMetalDirectCompute.rs facts_of) makes a repeating sampler of the
-    // 4:2:0 codes texture's header clamp to edge
+    // the direct compile under the texture's map (NativeMetalDirectComputeBinds.rs facts_of) makes a repeating sampler
+    // of the 4:2:0 codes texture's header clamp to edge
     uint32_t compiled = kWrap;
     for (const uint32_t shift : {0u, 3u, 6u})
         compiled = (compiled & ~(7u << shift)) | gm20b::mappedHeaderAddress(kWrap >> shift & 7, 3) << shift;

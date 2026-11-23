@@ -162,7 +162,17 @@ pub fn fragment_inputs(
         &r.color_attachments,
         r.texture_write_rounding_mode,
     );
-    inputs.two_plane_alphas = crate::pipeline::two_plane::alphas(&r.color_attachments, p);
+    inputs.stand_in_colors = r
+        .color_attachments
+        .iter()
+        .enumerate()
+        .filter_map(|(i, c)| {
+            let c = c.as_ref()?;
+            let s =
+                crate::pipeline::lower_inputs::StandInColor::new(c.stand_in?, c.blending_enabled);
+            Some((i as u32, s))
+        })
+        .collect();
     inputs.rotated_colors = crate::pipeline::color_writes::rotated_colors(&r.color_attachments);
     inputs.half_output_lanes =
         crate::pipeline::color_writes::half_output_lanes(&r.color_attachments);

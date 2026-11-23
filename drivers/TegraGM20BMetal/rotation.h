@@ -142,6 +142,13 @@ template <typename Texture> Rotation frameOf(const Texture &t)
     return r;
 }
 
+// What of a pass's frame of `width` x `height` from the origin lies in texture `t`'s frame
+template <typename Texture> Rect frameWithin(const Texture &t, uint32_t width, uint32_t height)
+{
+    const Rotation f = frameOf(t);
+    return {0, 0, std::min(width, f.width), std::min(height, f.height)};
+}
+
 // The root table's turn words (NVK's nvk_root_descriptor_table::switch_turn, nvk_switch_turn.h): a fragment program's turned
 // variant reads the frame through them, f.x = sx (swap ? p.y : p.x) + tx and f.y = sy (swap ? p.x : p.y) + ty of the plane's p,
 // a derivative the same without the offsets, a point coordinate with ox, oy (1 where an axis's sign is negative)

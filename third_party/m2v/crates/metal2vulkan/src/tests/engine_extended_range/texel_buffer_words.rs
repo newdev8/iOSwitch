@@ -120,7 +120,7 @@ fn a_two_plane_texture_buffer_binds_its_words_alone() {
         let Some(bc) = assemble(&format!("words {what}"), module) else {
             return;
         };
-        let dev = super::two_plane::gm20b(false, true);
+        let dev = super::kernel_planes::raw_device();
         let plain = pipeline(&dev, &bc, &LowerInputs::new()).expect("a texture-buffer kernel");
         let shape = buffer_state(PixelFormat::RGB10A82PXR10).shape();
         let plan = plain
@@ -238,7 +238,7 @@ fn texture_buffer_writes_store_apples_words() {
     let Some(bc) = assemble("words store", STORE) else {
         return;
     };
-    let p = super::two_plane::gm20b(false, true).profile().clone();
+    let p = super::kernel_planes::raw_device().profile().clone();
     let inputs = words_inputs();
     let a = validate_entry(&bc, "k", &inputs, &p, "words store");
     assert_eq!(image_formats(&a.module.words), [FORMAT_R32UI]);
@@ -264,7 +264,7 @@ fn texture_buffer_reads_are_apples_colors_with_alpha_zero() {
     let Some(bc) = assemble("words read back", READ_BACK) else {
         return;
     };
-    let p = super::two_plane::gm20b(false, true).profile().clone();
+    let p = super::kernel_planes::raw_device().profile().clone();
     let inputs = words_inputs();
     let a = validate_entry(&bc, "k", &inputs, &p, "words read back");
     assert_eq!(image_formats(&a.module.words), [FORMAT_R32UI]);

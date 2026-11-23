@@ -80,6 +80,14 @@ struct NativeUnsupportedTest: NativeObjectTest {
         tessellated.fragmentFunction = patchLibrary.makeFunction(name: "tri_fragment")
         tessellated.colorAttachments[0].pixelFormat = .rgba8Unorm
         tessellated.maxTessellationFactor = NativeAnswers.tessellationFactor
+        // tri_post reads its control points as attributes: Metal refuses the state without a vertex descriptor (an M4
+        // Max: "Vertex function has input attributes but no vertex descriptor was set")
+        let controlPoints = MTLVertexDescriptor()
+        controlPoints.attributes[0].format = .float4
+        controlPoints.attributes[0].bufferIndex = 0
+        controlPoints.layouts[0].stride = MemoryLayout<SIMD4<Float>>.stride
+        controlPoints.layouts[0].stepFunction = .perPatchControlPoint
+        tessellated.vertexDescriptor = controlPoints
         let amplified = MTLRenderPipelineDescriptor()
         amplified.vertexFunction = gpu.library.makeFunction(name: "quad_vertex")
         amplified.fragmentFunction = gpu.library.makeFunction(name: "solid_fragment")
@@ -117,6 +125,7 @@ struct NativeUnsupportedTest: NativeObjectTest {
         stageIn.attributes[0].format = .float4
         stageIn.attributes[0].bufferIndex = 2
         stageIn.layouts[2].stride = Int(bitPattern: UInt.max)
+        stageIn.layouts[2].stepFunction = .threadPositionInGridX
         compute.stageInputDescriptor = stageIn
         if let error = Self.refused({ _ = try device.makeComputePipelineState(descriptor: compute, options: []) }) {
             work.failures.append("the dynamic-stride stage-in state was refused: \(error)")

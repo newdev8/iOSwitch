@@ -176,7 +176,7 @@ private:
 
 // Each buffer entry's residual word + 1 as m2v's plan places it (NmbDirectKernel residualWord, 0: none), every one
 // named: a plan the bind offsets change, or a residual no record word names, is refused at its compile
-// (NativeMetalDirectCompute.rs record_residuals)
+// (NativeMetalDirectComputeWords.rs record_residuals)
 void attachResiduals(const NmbDirectKernel &k, std::vector<PackKernelEntry> &entries)
 {
     for (PackKernelEntry &e : entries)

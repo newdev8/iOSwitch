@@ -10,6 +10,8 @@
 #include <objc/message.h>
 #include <mutex>
 #include <thread>
+#include <utility>
+#include <vector>
 
 namespace {
 
@@ -137,6 +139,93 @@ TEST(GM20BFacadeCompressedMove, ARecordingThreadAttachesADepthTextureWhileTheWor
     [last waitUntilCompleted];
     EXPECT_EQ(last.status, MTLCommandBufferStatusCompleted) << last.error.description.UTF8String;
     EXPECT_TRUE([facts(device, depth) containsString:@"comptags=1"]) << facts(device, depth).UTF8String;
+}
+
+size_t jobs()
+{
+    std::lock_guard<std::mutex> l(kernel_model::callLock);
+    return kernel_model::model.jobs.size();
+}
+
+id<MTLTexture> privateDepth(id<MTLDevice> device, MTLPixelFormat format, NSUInteger width, NSUInteger height)
+{
+    MTLTextureDescriptor *td =
+        [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:format width:width height:height mipmapped:NO];
+    td.storageMode = MTLStorageModePrivate;
+    td.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
+    return [device newTextureWithDescriptor:td];
+}
+
+// One command buffer through the submit worker, whose raw range submission first moves a texture that still wants memory
+// made for it
+void submitOne(id<MTLDevice> device)
+{
+    id<MTLCommandBuffer> cb = [[device newCommandQueue] commandBuffer];
+    MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
+    rp.colorAttachments[0].texture = sharedTexture(device, scale_frames::Shape{1, 1, 1, 64, 64});
+    rp.colorAttachments[0].loadAction = MTLLoadActionClear;
+    rp.colorAttachments[0].storeAction = MTLStoreActionStore;
+    [[cb renderCommandEncoderWithDescriptor:rp] endEncoding];
+    [cb commit];
+    [cb waitUntilCompleted];
+    EXPECT_EQ(cb.status, MTLCommandBufferStatusCompleted) << cb.error.description.UTF8String;
+}
+
+// A whole-texture replaceRegion then getBytes, each the copy engine's job of its own (nothing else submits meanwhile)
+void copiesMove(id<MTLTexture> depth, uint32_t bpp)
+{
+    const NSUInteger w = depth.width, h = depth.height;
+    std::vector<uint8_t> written(w * h * bpp), read(written.size(), 0xab);
+    for (size_t i = 0; i < written.size(); i++)
+        written[i] = uint8_t(i * 37 + 11);
+    const size_t before = jobs();
+    [depth replaceRegion:MTLRegionMake2D(0, 0, w, h) mipmapLevel:0 withBytes:written.data() bytesPerRow:w * bpp];
+    const size_t replaced = jobs();
+    EXPECT_GT(replaced, before) << "replaceRegion moved nothing";
+    [depth getBytes:read.data() bytesPerRow:w * bpp fromRegion:MTLRegionMake2D(0, 0, w, h) mipmapLevel:0];
+    EXPECT_GT(jobs(), replaced) << "getBytes moved nothing";
+}
+
+// A private depth texture made plain for want of compressed memory takes CPU copies through the copy engine, as Apple's
+// driver does with API validation off (HW Test metal.native.depth_cpu), and stays plain from then on: the memory made
+// for it and a raw range after it move it no more
+TEST(GM20BFacadeCompressedMove, ACpuCopyOfADepthTextureMadePlainMovesItsTexelsAndKeepsItPlain)
+{
+    {
+        std::lock_guard<std::mutex> l(kernel_model::callLock);
+        kernel_model::model.infoFlags |= TegraGM20BInfoCompression;
+    }
+    ASSERT_TRUE(opened().device != nil);
+    id<MTLDevice> device = opened().device;
+    const std::pair<MTLPixelFormat, uint32_t> kFormats[] = {{MTLPixelFormatDepth32Float, 4},
+                                                            {MTLPixelFormatDepth16Unorm, 2}};
+    for (const auto &[format, bpp] : kFormats) {
+        SCOPED_TRACE(testing::Message() << "format " << (unsigned long)format);
+        id<MTLTexture> depth = privateDepth(device, format, 72, 40);
+        ASSERT_TRUE([facts(device, depth) containsString:@"comptags=0"]) << "none of its size made: asked for";
+        copiesMove(depth, bpp);
+        ASSERT_EQ(harness::compressionSettled(device), 1);
+        submitOne(device);
+        EXPECT_TRUE([facts(device, depth) containsString:@"comptags=0"]) << facts(device, depth).UTF8String;
+    }
+}
+
+// One that moved onto its compressed memory first takes them through the copy engine there (of a size past the 128 KiB
+// granule, which the memory made for the plain ones above, and left ready, does not serve)
+TEST(GM20BFacadeCompressedMove, ACpuCopyOfADepthTextureMovedOntoCompressedMemoryReachesIt)
+{
+    {
+        std::lock_guard<std::mutex> l(kernel_model::callLock);
+        kernel_model::model.infoFlags |= TegraGM20BInfoCompression;
+    }
+    ASSERT_TRUE(opened().device != nil);
+    id<MTLDevice> device = opened().device;
+    id<MTLTexture> depth = privateDepth(device, MTLPixelFormatDepth32Float, 256, 160);
+    ASSERT_TRUE([facts(device, depth) containsString:@"comptags=0"]) << "none of its size made: asked for";
+    ASSERT_EQ(harness::compressionSettled(device), 1);
+    submitOne(device);
+    ASSERT_TRUE([facts(device, depth) containsString:@"comptags=1"]) << facts(device, depth).UTF8String;
+    copiesMove(depth, 4);
 }
 
 // Nothing asked of the compression thread: the block runs at once, on the caller's thread, before the call returns

@@ -93,7 +93,6 @@ static void endedTwice(SwitchMetalCommandBuffer *cb)
     _ended = true;
     if (!_counterPending.empty())
         gm20bPlaceCounterMarks(_cb, self, _cb->_plan.size(), false);
-    gm20bXrShadowEnd(_cb);
     [_cb record:cmd(OpEnd)];
     _cb->_active = nil;
 }

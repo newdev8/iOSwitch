@@ -35,7 +35,7 @@ switch_gm20b_2d_surface gridSurface(const Texture &t, uint32_t fmt2d, uint32_t w
 
 // fx::twodFormat's formats, RGB10A2Unorm, whose resolve the pack has no state for, RG11B10Float, and the formats whose
 // resolve is the mean of their codes (attachment_target.h codesResolvedByTwod): the signed normalized ones as the 2D
-// engine's signed formats, BGR10_XR's word as A2B10G10R10, whose 10-bit fields are its codes
+// engine's signed formats
 uint32_t resolveFormat(uint32_t mtl)
 {
     switch (mtl) {
@@ -52,7 +52,6 @@ uint32_t resolveFormat(uint32_t mtl)
     case 112:
         return NV902D_SET_DST_FORMAT_V_RN16_GN16_BN16_AN16;
     case 90:
-    case 554:
         return NV902D_SET_DST_FORMAT_V_A2B10G10R10;
     case 92:
         return NV902D_SET_DST_FORMAT_V_BF10GF11RF11;

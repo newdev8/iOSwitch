@@ -27,8 +27,6 @@ Problem targetGap(const ResourceFacts &f)
 {
     if (f.has(ResourceFacts::RotatedPlane))
         return Problem::RotatedTarget;
-    if (f.has(ResourceFacts::TwoPlaneXr))
-        return Problem::TwoPlaneExtendedRange;
     if (f.has(ResourceFacts::PlanarTarget))
         return Problem::PlanarTarget;
     if (f.samples > 1 && !f.has(ResourceFacts::Memoryless))

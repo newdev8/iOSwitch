@@ -115,8 +115,6 @@ inline uint32_t iteratedBlendNoop(const uint32_t *blob, uint32_t dwords, const u
         if (!s)
             return kNoopNever;
     const uint32_t format = keyColorFormat(keyString, 0);
-    if (format >= 550 && format <= 555)  // extended range: m2v blends those in the program
-        return kNoopNever;
     const bool normalized = normalizedFormat(format);
     for (uint32_t half = 0; half < 2; half++) {
         const uint32_t *t = perTarget + 3 * half;  // op, source coefficient, destination coefficient

@@ -246,6 +246,16 @@ public:
         return false;
     }
 
+    // An entry wanted or in the kernel's hands, not yet added or refused
+    bool unanswered()
+    {
+        std::lock_guard<gm20b::Mutex> l(lock_);
+        for (uint32_t i = 0; i < count_; i++)
+            if (entries_[i].state == Wanted || entries_[i].state == Asking)
+                return true;
+        return false;
+    }
+
 private:
     // the GPU's 15 colour and 15 depth entries, and a few its full table refused
     static constexpr uint32_t kEntries = 40;

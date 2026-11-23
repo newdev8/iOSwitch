@@ -40,7 +40,7 @@ HANDLE = 0x5E7C0000  # a fetched colour's handle word: this, its colour in the l
 ENTRY_FETCH = 3  # runtime/pack.h EntryFetch
 CBUF_SET = 3  # PackCbufType CbufSet
 STORAGE_METADATA, SKIPPED = 8, 2 | 16 | 32  # PipelineStorageMetadata; barrier, variant and fetch-free records
-# PackPipeline past its head: entry[32], pushMask, pushWords[32], blendColorWord, halfBlendColorWord, iterated
+# PackPipeline past its head: entry[32], pushMask, pushWords[32], halfBlendColorWord, iterated
 STORAGE_MASKS = 8 * 32 + 4 + 4 * 32 + 4
 PROGRAM = struct.Struct('<IIIII')  # PackProgram: heapOffset, program, bytes, dataOffset, dataBytes
 

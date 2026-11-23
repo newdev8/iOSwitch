@@ -160,7 +160,7 @@ uint32_t traits(const Pack &pack, const PackPipeline &pp)
     for (uint16_t format : pp.writtenFormat)
         if (format)
             t |= TraitWritten;
-    if ((pp.flags & PipelineTwoPlane) || pp.xrSlots)
+    if (pp.xrSlots)
         t |= TraitTwoPlane;
     for (uint8_t r : pp.fetchRung)
         rung = std::max<uint32_t>(rung, r & kFetchRungMask);

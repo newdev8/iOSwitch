@@ -241,7 +241,6 @@ static void forwardCall(SwitchMetalEncoder *e, SEL selector, const void *argumen
     // ended, whose draws are refused
     if (!_pipe || _cb->_encFailed)
         return !gm20bDrawAfterParallelEnd(_cb);
-    gm20bXrShadowDrew(_cb, *_pipe->_raw);
     if (_checkedEligibility == _eligibility && _checkedEpoch == _cb->_plan.stateEpoch() &&
         _checkedPipeline == _pipe->_raw)
         return YES;

@@ -269,11 +269,10 @@ bool layout(const NmbDirectDraw &d, std::vector<LayoutEntry> &out, std::string &
         // (the texture buffer's own header, as a kernel's: direct_compute.cpp)
         const bool attachment = w.source == NmbDirectAttachment || w.source == NmbDirectStorageAttachment;
         const bool testImage = w.source == NmbDirectDepthStandIn || w.source == NmbDirectStencilStandIn;
-        const bool shadow = w.source == NmbDirectExtendedShadow;
         const bool texelBuffer = w.type == UniformTexelBuffer || w.type == StorageTexelBuffer;
         if (w.type != Sampler && w.type != CombinedImageSampler && w.type != SampledImage &&
             w.type != InputAttachment && !(texelBuffer && w.source == NmbDirectTexture) &&
-            !(w.type == StorageImage && (attachment || testImage || shadow || w.source == NmbDirectTexture))) {
+            !(w.type == StorageImage && (attachment || testImage || w.source == NmbDirectTexture))) {
             why = "a set-0 descriptor of type " + std::to_string(w.type) + " (source " + std::to_string(w.source) +
                   ", slot " + std::to_string(w.slot) + ")";
             return false;
@@ -282,13 +281,6 @@ bool layout(const NmbDirectDraw &d, std::vector<LayoutEntry> &out, std::string &
         if (w.type != Sampler) {
             if (testImage) {
                 e.tex = w.source == NmbDirectDepthStandIn ? Tex::DepthTest : Tex::StencilTest;
-            } else if (shadow) {
-                if (w.slot >= 8 || w.stage != 2) {
-                    why = "an extended-range shadow of colour " + std::to_string(w.slot);
-                    return false;
-                }
-                e.tex = Tex::XrShadow;
-                e.texSlot = uint8_t(w.slot);
             } else if (attachment) {
                 e.tex = Tex::Fetch;
                 e.texSlot = uint8_t(w.slot);
@@ -300,7 +292,8 @@ bool layout(const NmbDirectDraw &d, std::vector<LayoutEntry> &out, std::string &
                           " a render stage binds on " + SWITCH_METAL_KIND;
                     return false;
                 }
-                // the direct compile binds a texture of each argument's declared type (NativeMetalDirect.rs declared_slots)
+                // the direct compile binds a texture of each argument's declared type (NativeMetalDirectProbe.rs
+                // declared_slots)
                 e.tex = w.viewType == kViewType3D ? Tex::Texture3D : Tex::Slot;
                 e.texSlot = uint8_t(w.slot);
                 if ((w.type == StorageImage || w.type == StorageTexelBuffer) && w.stage == 2) {
@@ -368,8 +361,8 @@ const char *spillTables(const NmbDirectState &state, RecordParts &parts)
                 return "a bind offset residual placed past word 30 of its argument table, which no record word names";
         memcpy(parts.residualWord[k], draw.residualWord[k], sizeof parts.residualWord[k]);
     }
-    for (const uint32_t word : {draw.blendColorWord, draw.halfBlendColorWord, draw.depthTestWord, draw.stencilTestWord,
-                                draw.shadowStencilWord})
+    for (const uint32_t word :
+         {draw.halfBlendColorWord, draw.depthTestWord, draw.stencilTestWord, draw.shadowStencilWord})
         if (word > 0xFF)
             return "a dynamic field past word 222 of its argument table";
     return nullptr;
@@ -394,10 +387,10 @@ bool vertexStreams(const std::vector<EmitStream> &streams, RecordParts &parts, s
 
 // emit's registers over the pack's baseline and context. One the hardware does not read keeps what pack states leave there
 // unless the pack varies it, so it never costs an extra. Fixed-function input fetches the attributes the translation does not
-// pull, at the locations m2v gives them (dense in attribute order). `alphaTargets`: a two-plane state's (emitState's).
+// pull, at the locations m2v gives them (dense in attribute order).
 bool emitted(const std::string &key, const Stages &stages, const std::vector<uint32_t> &attributes, uint32_t pulled,
-             uint32_t blended, bool twoPlane, const PackRules &rules, std::map<uint32_t, uint32_t> &regs,
-             uint32_t &alphaTargets, std::vector<EmitStream> &streams, std::string &why)
+             uint32_t blended, const PackRules &rules, std::map<uint32_t, uint32_t> &regs,
+             std::vector<EmitStream> &streams, std::string &why)
 {
     std::string fields = key.substr(0, key.find(" | "));
     while (!fields.empty() && fields.back() == ' ')
@@ -408,7 +401,7 @@ bool emitted(const std::string &key, const Stages &stages, const std::vector<uin
             return index >= 32 || !(pulled >> index & 1);
         });
     std::vector<EmitRegister> made;
-    if (!emitState(fields, stages.emit(0), stages.emit(1), made, why, &blended, twoPlane, &alphaTargets) ||
+    if (!emitState(fields, stages.emit(0), stages.emit(1), made, why, &blended) ||
         !emitVertexInput(fields, fetched, made, streams, why))
         return false;
     regs = rules.context;
@@ -662,7 +655,6 @@ CompileOutcome directRecord(const NmbDirectState &state, const StageCompile &com
     parts.shaderTests.reserved = uint8_t(draw.shadowStencilWord);
     memcpy(parts.storageTic, storage.storageTic, sizeof parts.storageTic);
     parts.pushMetadata = true;
-    parts.blendColorWord = uint8_t(draw.blendColorWord);
     parts.halfBlendColorWord = uint8_t(draw.halfBlendColorWord);
     parts.programs[0] = &stages.program(0);
     parts.programs[1] = stages.pixel() ? &stages.program(1) : nullptr;
@@ -700,8 +692,7 @@ CompileOutcome directRecord(const NmbDirectState &state, const StageCompile &com
     if (!drawnWords(state, parts, why))
         return CompileOutcome::Refused;
     std::vector<EmitStream> streams;
-    if (!emitted(key, stages, attributes, draw.pulledAttributes, state.blended, state.twoPlane, rules, parts.regs,
-                 parts.alphaTargets, streams, why) ||
+    if (!emitted(key, stages, attributes, draw.pulledAttributes, state.blended, rules, parts.regs, streams, why) ||
         !vertexStreams(streams, parts, why))
         return CompileOutcome::Refused;
     const uint32_t addresses = addressPushWords(draw);
@@ -724,8 +715,6 @@ CompileOutcome directRecord(const NmbDirectState &state, const StageCompile &com
         tessellationRegisters(state.tess, out);
     if (registers)
         *registers = parts.regs;
-    if (state.twoPlane)
-        out.pipeline.flags |= PipelineTwoPlane;
     out.pipeline.xrSlots = xrSlots;
     out.splitTried = split && splitsFragment(state);
     if (splits)

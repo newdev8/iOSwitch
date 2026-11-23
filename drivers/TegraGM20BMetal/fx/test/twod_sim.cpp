@@ -19,7 +19,10 @@ static uint32_t formatBpp(uint32_t f)
     case 0xd6:
         return 4;
     case 0xca:
+    case 0xc6:  // R16_G16_B16_A16
         return 8;
+    case 0xc0:  // RF32_GF32_BF32_AF32
+        return 16;
     case 0xea:
         return 2;
     case 0xf3:

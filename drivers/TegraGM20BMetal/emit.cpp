@@ -3,7 +3,6 @@
 // fragment program's push) applied to what m2v makes of a Metal descriptor.
 #include "emit.h"
 #include "sample_shading.h"
-#include "xr_pass.h"
 
 #include <algorithm>
 #include <array>
@@ -37,13 +36,6 @@ constexpr uint32_t kFactors[] = {0x4000, 0x4001, 0x4300, 0x4301, 0x4302, 0x4303,
 struct Color {
     unsigned format, writeMask, blending, factor[6];  // srcRGB, dstRGB, opRGB, srcAlpha, dstAlpha, opAlpha
 };
-
-// m2v holds an extended-range attachment as its raw codes (RGB10A8_2P_XR10, BGRA10_XR, BGR10_XR and _sRGB twins): the program
-// writes the components of the format it is stored in, and blends in itself
-bool extendedRange(unsigned format)
-{
-    return format >= 550 && format <= 555;
-}
 
 bool identityBlend(const Color &c)
 {
@@ -145,21 +137,6 @@ VertexFormat vertexFormat(unsigned format)
     }
 }
 
-// Each RGB10A8_2P_XR10 colour's alpha byte as the R8Uint target at its alpha index (xr_pass.h), written where Metal's mask
-// writes alpha (MTLColorWriteMaskAlpha, bit 0) and never blended; returns those targets (xrAlphaTargets)
-uint32_t addAlphaPlanes(std::map<unsigned, Color> &colors)
-{
-    uint32_t formats[8] = {};
-    for (const auto &[j, c] : colors)
-        if (j < 8)
-            formats[j] = c.format;
-    const std::array<int8_t, 8> alpha = xrAlphaSlots(formats);
-    for (uint32_t j = 0; j < 8; j++)
-        if (alpha[j] >= 0)
-            colors[unsigned(alpha[j])] = {kXrAlphaFormat, colors[j].writeMask & 1 ? 8u : 0u, 0, {1, 0, 0, 1, 0, 0}};
-    return xrAlphaTargets(formats);
-}
-
 // "a<i>=format:offset:buffer:stride:stepFunction:stepRate"
 struct Attribute {
     unsigned format, offset, buffer, stride, step, rate;
@@ -245,38 +222,42 @@ bool emitVertexInput(const std::string &keyFields, const std::vector<uint32_t> &
 }
 
 bool emitState(const std::string &keyFields, const EmitProgram &vertex, const EmitProgram &fragment,
-               std::vector<EmitRegister> &out, std::string &why, const uint32_t *blended, bool twoPlane,
-               uint32_t *alphaTargets)
+               std::vector<EmitRegister> &out, std::string &why, const uint32_t *blended)
 {
     std::map<unsigned, Color> colors;
     unsigned depthFormat = 0;
     if (!parse(keyFields, colors, depthFormat, why))
         return false;
-    const uint32_t alpha = twoPlane ? addAlphaPlanes(colors) : 0;
-    if (alphaTargets)
-        *alphaTargets = alpha;
     // the fragment program's output map: 4 components per target, from bit 576 of its header (NAK sph.rs omap_target)
     const uint32_t outputs = fragment.header ? bits(fragment.header, 576, 32) : 0;
     out.clear();
     std::map<unsigned, uint32_t> writes;
     for (const auto &[j, c] : colors) {
         const unsigned written = outputs >> (4 * j) & 0xF;
-        // m2v's write mask: Metal's (red in bit 3) where the program writes the target; an extended-range target's the
-        // components its stored format has
+        // m2v's write mask: Metal's (red in bit 3) where the program writes the target
         unsigned components = 0;
         if (written && c.writeMask)
             for (unsigned i = 0; i < 4; i++)
-                components |= (extendedRange(c.format) ? written >> i & 1 : c.writeMask >> (3 - i) & 1) << i;
+                components |= (c.writeMask >> (3 - i) & 1) << i;
         writes[j] = ctWrite(components);
         out.push_back({kCtWrite + 4 * j, writes[j], true});
         // m2v leaves a blend of ONE and ZERO on where the program does not round the target's writes itself
         const bool vulkanBlend = blended ? (*blended >> j & 1) : c.blending && !identityBlend(c);
-        const bool blends = vulkanBlend && c.writeMask && !extendedRange(c.format);
+        const bool blends = vulkanBlend && c.writeMask;
         out.push_back({kBlend + 4 * j, blends, writes[j] && !(c.blending && identityBlend(c))});
         // Metal's alpha factors are always their own; target 0's too, so no record takes it from what the pack leaves
         out.push_back({kBlendPerTarget + 0x20 * j, 1, true});
-        const uint32_t values[6] = {kOps[c.factor[2]], kFactors[c.factor[0]], kFactors[c.factor[1]],
-                                    kOps[c.factor[5]], kFactors[c.factor[3]], kFactors[c.factor[4]]};
+        // an extended-range format of no alpha blends in its RGBA16Float stand-in by a destination alpha of 1: its factors
+        // of the destination alpha are the constants they come to (standin_blend.h alphaOneFactor)
+        const bool alphaOne = c.format == 554 || c.format == 555;
+        const auto factor = [alphaOne](unsigned f, bool rgb) {
+            constexpr unsigned kOne = 1, kZero = 0, kDstAlpha = 8, kOneMinusDstAlpha = 9, kSrcAlphaSaturated = 10;
+            if (!alphaOne || (f != kDstAlpha && f != kOneMinusDstAlpha && f != kSrcAlphaSaturated))
+                return kFactors[f];
+            return kFactors[f == kDstAlpha ? kOne : f == kOneMinusDstAlpha ? kZero : rgb ? kZero : kOne];
+        };
+        const uint32_t values[6] = {kOps[c.factor[2]], factor(c.factor[0], true),  factor(c.factor[1], true),
+                                    kOps[c.factor[5]], factor(c.factor[3], false), factor(c.factor[4], false)};
         const uint32_t off[6] = {kOpAdd, kZero, kZero, kOpAdd, kZero, kZero};
         for (unsigned k = 0; k < 6; k++)
             out.push_back({kBlendPerTarget + 0x20 * j + 4 + 4 * k, blends ? values[k] : off[k], blends && writes[j]});

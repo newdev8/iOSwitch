@@ -202,6 +202,9 @@ struct Model {
     // GetInfo's client VA end: a gm20b::Device's shader heap reserves a 4 GiB program window in its quarter
     uint64_t vaEnd = uint64_t(1) << 40;
     uint32_t infoFlags = 0;  // GetInfo's flags beyond the model's own (TegraGM20BInfoTiledCache)
+    // A test's answer to a method the model does not implement, its reply written into `output`; unset, every such
+    // method is refused kIOReturnUnsupported, as a kernel without the feature refuses it (ZcullInfo: no zcull RAM)
+    std::function<kern_return_t(uint32_t method, void *output)> otherMethod;
     // SurfaceLayout's answer to every import that asks (TegraGM20BInfoSurfaceLayout in infoFlags): 0 pitch, or
     // TegraGM20BLayoutTiled, the kernel's block-linear decision for the surface
     uint32_t surfaceLayout = 0;
@@ -902,7 +905,7 @@ extern "C" kern_return_t IOConnectCallStructMethod(mach_port_t connection, uint3
             kernel_model::kFenceToken + TegraGM20BClockAnchorOffset, kernel_model::kFenceToken, 0};
         return KERN_SUCCESS;
     default:
-        return kIOReturnUnsupported;
+        return model.otherMethod ? model.otherMethod(method, output) : kIOReturnUnsupported;
     }
 }
 

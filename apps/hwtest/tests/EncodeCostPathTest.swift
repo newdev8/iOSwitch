@@ -164,6 +164,8 @@ struct EncodeCostPathTest: HWTest {
             }
         }
         withExtendedLifetime(keptPlain) {}
+        let judged = Set(Self.ceilings.map(\.event) + Self.perDrawFree)
+        metrics.fitLog(within: 720, keeping: Set(Self.drawCounts.flatMap { d in judged.map { $0 + "_d\(d)" } }))
         return failures.isEmpty
             ? .pass(metrics, proof: gpu.proof) : .fail(failures.joined(separator: "; "), metrics, proof: gpu.proof)
     }

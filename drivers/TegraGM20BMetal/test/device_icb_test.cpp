@@ -502,6 +502,7 @@ TEST_F(DeviceIcb, AFetchingStatesCommandsAreDrawnAPrimitiveAtATime)
     auto *words = reinterpret_cast<uint32_t *>(slots.cpu);
     gm20b::icb::draw(words, 0, {kTriangle, 6, 1, 0, 0});
     gm20b::icb::draw(words + gm20b::icb::kSlotWords, 1, {2, 3, 1, 0, 0});
+    const uint64_t sequential = dev.stats.fetch.sequential;
     const Channel c = pass(pl, [&](gm20b::RenderEncoder &e) {
         const char *refused = nullptr;
         EXPECT_TRUE(e.executeSlots(execute(0, 2, gm20b::icb::kSlotWords, kTriangle), &refused))
@@ -516,6 +517,7 @@ TEST_F(DeviceIcb, AFetchingStatesCommandsAreDrawnAPrimitiveAtATime)
                                             kFetchBeginContinued, last}))
         << c.summary();
     EXPECT_EQ(c.scratch.words[SWITCH_GM20B_SCRATCH_FETCH_ICB], 0u) << "the executes after it draw whole";
+    EXPECT_EQ(dev.stats.fetch.sequential - sequential, 1u) << "one fetching call, as an indirect draw is";
 }
 
 // An execute under view mappings that offset the viewport: each pass of its range has its amplification's offset in the

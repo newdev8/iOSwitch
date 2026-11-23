@@ -125,14 +125,19 @@ class YcbcrStandIn(unittest.TestCase):
             ('c0=11:15:1:8:9:0:10:9:0', 'c0=71:15:1:1:0:0:1:0:0'),
             ('c0=93:7:1:4:5:0:1:5:0', 'c0=125:7:1:4:5:0:1:5:0'),
             ('c0=41:15:1:8:9:0:8:9:0', 'c0=125:15:1:8:9:0:8:9:0'),
-            ('c0=555:15:1:8:9:0:10:9:0 c1=10:15:0:1:0:0:1:0:0', 'c0=115:15:1:1:0:0:1:0:0 c1=10:15:0:1:0:0:1:0:0'),
-            ('c0=553:15:1:8:9:0:10:9:0 c1=10:15:0:1:0:0:1:0:0', 'c0=115:15:1:8:9:0:10:9:0 c1=10:15:0:1:0:0:1:0:0'),
             ('c0=42:15:0:1:0:0:1:0:0 c1=540:15:0:1:0:0:1:0:0', 'c0=125:15:0:1:0:0:1:0:0 c1=125:15:0:1:0:0:1:0:0'),
         ):
             line = f'{self.HEAD}{colors}' + self.TAIL
             self.assertEqual(stand_in(line), f'{self.HEAD}{stand_in_colors}' + self.TAIL)
         line = f'{self.HEAD}c0=11:15:0:1:0:0:1:0:0 c1=501:15:0:1:0:0:1:0:0' + self.TAIL
         self.assertEqual(stand_in(line), f'{self.HEAD}c0=71:15:0:1:0:0:1:0:0 c1=125:15:0:1:0:0:1:0:0' + self.TAIL)
+
+    def test_an_extended_range_states_line_is_its_own(self):
+        # the translator lowers an extended-range attachment onto its RGBA16Float stand-in from the descriptor's own
+        # format (translate/NativeMetalDescriptors.rs), so the pack keys the state as Metal's descriptor does
+        for fmt in range(550, 556):
+            line = f'{self.HEAD}c0={fmt}:15:1:8:9:0:10:9:0 c1=10:15:0:1:0:0:1:0:0' + self.TAIL
+            self.assertEqual(stand_in(line), line)
 
     def test_the_format_stand_ins_are_the_runtimes(self):
         header = Path('drivers/TegraGM20BMetal/format_standin.h').read_text()

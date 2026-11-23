@@ -483,6 +483,23 @@ TEST_F(GM20BNativeSurface, IdleReclamationCannotFreeAnUnsubmittedView)
     EXPECT_EQ(device.k_.frees, 1u);
 }
 
+// A Main 10 picture ('x420', 'xf20'): its 16-bit luma and 32-bit interleaved chroma texels read in place as r16Unorm
+// and rg16Unorm planes, as the 8-bit picture's are
+TEST(GM20BNativePlane, QualifiesAMainTenPicturesSixteenBitPlanes)
+{
+    auto view = layout();
+    view.format = 0x78343230;
+    view.planes[0] = {0, 2560 * 768, 1280, 768, 2560, 2, 4, 0};
+    view.planes[1] = {2560 * 768, 2560 * 384, 640, 384, 2560, 4, 4, 0};
+    view.bytes = view.planes[0].bytes + view.planes[1].bytes;
+    EXPECT_TRUE(gm20b::nativePlaneFits(view, 0, 1280, 720, 2));
+    EXPECT_TRUE(gm20b::nativePlaneFits(view, 1, 640, 360, 4));
+    view.format = 0x78663230;
+    EXPECT_TRUE(gm20b::nativePlaneFits(view, 0, 1280, 720, 2));
+    view.format = 0x78343232;
+    EXPECT_FALSE(gm20b::nativePlaneFits(view, 0, 1280, 720, 2)) << "'x422' is not a 4:2:0 picture";
+}
+
 TEST(GM20BNativePlane, QualifiesHardwareStrideCropBlockHeightAndBounds)
 {
     auto view = layout();

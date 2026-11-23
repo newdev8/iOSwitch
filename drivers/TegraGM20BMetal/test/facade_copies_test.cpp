@@ -8,6 +8,7 @@
 #include "facade_blit_engines.h"
 #include "../TegraGM20BMetalInternal.h"
 
+#import <IOSurface/IOSurface.h>
 #include <gtest/gtest.h>
 #include <algorithm>
 #include <string>
@@ -321,6 +322,135 @@ TEST_F(FacadeCopies, EveryLayoutMetalTakesOnATextureTheRawPathHoldsIsItsToo)
     for (const char *formerlyM2v : {"etc2 rgb8", "array slice 1 level 1", "r32uint", "rgba16uint"})
         EXPECT_TRUE(std::find(notHeld.begin(), notHeld.end(), formerlyM2v) == notHeld.end())
             << formerlyM2v << ": not held, so its copies are m2v's";
+}
+
+// An R8Unorm `width` x `height` over the luma plane of a '420v' whose rows are `pitch` bytes apart, longer than they
+// are: its rows overlap (an M4 Max reads and writes row y at the plane's byte y * pitch: plain_rows.h), every byte of
+// the surface seeded
+struct OverlappingRows {
+    IOSurfaceRef surface = nullptr;
+    id<MTLTexture> texture = nil;
+
+    OverlappingRows(NSUInteger width, NSUInteger height, NSUInteger pitch)
+    {
+        const NSUInteger chroma = (pitch * height + 16383) & ~NSUInteger(16383);
+        NSDictionary *luma = @{
+            (id)kIOSurfacePlaneWidth : @(pitch),
+            (id)kIOSurfacePlaneHeight : @(height),
+            (id)kIOSurfacePlaneBytesPerElement : @1,
+            (id)kIOSurfacePlaneBytesPerRow : @(pitch),
+            (id)kIOSurfacePlaneOffset : @0,
+            (id)kIOSurfacePlaneSize : @(pitch * height)
+        };
+        NSDictionary *pairs = @{
+            (id)kIOSurfacePlaneWidth : @1,
+            (id)kIOSurfacePlaneHeight : @1,
+            (id)kIOSurfacePlaneBytesPerElement : @2,
+            (id)kIOSurfacePlaneBytesPerRow : @16,
+            (id)kIOSurfacePlaneOffset : @(chroma),
+            (id)kIOSurfacePlaneSize : @16
+        };
+        surface = IOSurfaceCreate((__bridge CFDictionaryRef) @{
+            (id)kIOSurfaceWidth : @(pitch),
+            (id)kIOSurfaceHeight : @(height),
+            (id)kIOSurfacePixelFormat : @(uint32_t('420v')),
+            (id)kIOSurfaceAllocSize : @(chroma + 16384),
+            (id)kIOSurfacePlaneInfo : @[ luma, pairs ]
+        });
+        if (!surface)
+            return;
+        auto *base = static_cast<uint8_t *>(IOSurfaceGetBaseAddress(surface));
+        for (size_t i = 0; i < IOSurfaceGetAllocSize(surface); ++i)
+            base[i] = uint8_t(i * 37 + (i >> 7));
+        MTLTextureDescriptor *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatR8Unorm
+                                                                                     width:width
+                                                                                    height:height
+                                                                                 mipmapped:NO];
+        d.usage = MTLTextureUsageShaderRead;
+        d.storageMode = MTLStorageModeShared;
+        texture = [gDevice newTextureWithDescriptor:d iosurface:surface plane:0];
+    }
+
+    ~OverlappingRows()
+    {
+        if (surface)
+            CFRelease(surface);
+    }
+
+    const uint8_t *bytes() const
+    {
+        return static_cast<const uint8_t *>(IOSurfaceGetBaseAddress(surface));
+    }
+};
+
+// gpu.gm20b.plain_rows_reads' overlapping arm, R8Unorm 136x104 over rows of 16 bytes: a copy of it into a buffer moves
+// row y from the plane's byte y * 16, as every read of it does. The copy engine's model holds a launch of lines longer
+// than a pitch side's rows, which never completes on the GM20B (boot 1: CTXSW_TIMEOUT with CE2 busy in a context save)
+TEST_F(FacadeCopies, ACopyOutOfRowsThatOverlapReadsEachRowAtThePlanesPitch)
+{
+    constexpr NSUInteger kWidth = 136, kHeight = 104, kPitch = 16;
+    OverlappingRows rows(kWidth, kHeight, kPitch);
+    ASSERT_TRUE(rows.texture != nil && ((SwitchMetalTexture *)rows.texture)->_gm20bOk);
+    ASSERT_EQ(((SwitchMetalTexture *)rows.texture)->_raw.pitch, kPitch);
+    const std::vector<uint8_t> surface(rows.bytes(), rows.bytes() + IOSurfaceGetAllocSize(rows.surface));
+    id<MTLBuffer> out = [gDevice newBufferWithLength:kWidth * kHeight options:MTLResourceStorageModeShared];
+    memset(out.contents, 0xee, out.length);
+    id<MTLCommandBuffer> cb = [[gDevice newCommandQueue] commandBuffer];
+    id<MTLBlitCommandEncoder> e = [cb blitCommandEncoder];
+    [e copyFromTexture:rows.texture
+                     sourceSlice:0
+                     sourceLevel:0
+                    sourceOrigin:MTLOriginMake(0, 0, 0)
+                      sourceSize:MTLSizeMake(kWidth, kHeight, 1)
+                        toBuffer:out
+               destinationOffset:0
+          destinationBytesPerRow:kWidth
+        destinationBytesPerImage:kWidth * kHeight];
+    [e endEncoding];
+    EngineRun run;
+    ASSERT_NO_FATAL_FAILURE(commitOnRaw(cb, run));
+    const auto *got = static_cast<const uint8_t *>(out.contents);
+    size_t wrong = 0;
+    for (NSUInteger y = 0; y < kHeight; ++y)
+        for (NSUInteger x = 0; x < kWidth; ++x)
+            wrong += got[y * kWidth + x] != surface[y * kPitch + x];
+    EXPECT_EQ(wrong, 0u) << "of " << kWidth * kHeight;
+    EXPECT_EQ(std::vector<uint8_t>(rows.bytes(), rows.bytes() + surface.size()), surface) << "the plane is only read";
+}
+
+// A copy from a buffer into R8Unorm 136x40 over rows of 64 bytes (gpu.gm20b.plain_rows_cpu's shape) lands its rows in
+// row order: each plane byte two or more rows reach holds the last such row's byte, every byte past the rows as it was
+TEST_F(FacadeCopies, ACopyIntoRowsThatOverlapLandsTheLaterRowsBytes)
+{
+    constexpr NSUInteger kWidth = 136, kHeight = 40, kPitch = 64;
+    OverlappingRows rows(kWidth, kHeight, kPitch);
+    ASSERT_TRUE(rows.texture != nil && ((SwitchMetalTexture *)rows.texture)->_gm20bOk);
+    std::vector<uint8_t> want(rows.bytes(), rows.bytes() + IOSurfaceGetAllocSize(rows.surface));
+    id<MTLBuffer> in = [gDevice newBufferWithLength:kWidth * kHeight options:MTLResourceStorageModeShared];
+    auto *codes = static_cast<uint8_t *>(in.contents);
+    for (NSUInteger i = 0; i < in.length; ++i)
+        codes[i] = uint8_t(i / kWidth * 5 + i % kWidth * 3 + 1);
+    for (NSUInteger y = 0; y < kHeight; ++y)
+        for (NSUInteger x = 0; x < kWidth; ++x)
+            want[y * kPitch + x] = codes[y * kWidth + x];
+    id<MTLCommandBuffer> cb = [[gDevice newCommandQueue] commandBuffer];
+    id<MTLBlitCommandEncoder> e = [cb blitCommandEncoder];
+    [e copyFromBuffer:in
+               sourceOffset:0
+          sourceBytesPerRow:kWidth
+        sourceBytesPerImage:kWidth * kHeight
+                 sourceSize:MTLSizeMake(kWidth, kHeight, 1)
+                  toTexture:rows.texture
+           destinationSlice:0
+           destinationLevel:0
+          destinationOrigin:MTLOriginMake(0, 0, 0)];
+    [e endEncoding];
+    EngineRun run;
+    ASSERT_NO_FATAL_FAILURE(commitOnRaw(cb, run));
+    size_t wrong = 0;
+    for (size_t i = 0; i < want.size(); ++i)
+        wrong += rows.bytes()[i] != want[i];
+    EXPECT_EQ(wrong, 0u) << "of " << want.size() << " bytes of the surface";
 }
 
 }  // namespace

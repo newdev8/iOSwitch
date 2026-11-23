@@ -62,10 +62,6 @@ public:
                 return why = "a cubic segment it cannot read", false;
             } else if (tag.rfind("tests=", 0) == 0) {
                 r.variant.fragmentTests = uint8_t(atoi(tag.c_str() + 6));
-            } else if (tag.rfind("xrsh=", 0) == 0) {
-                r.variant.xrShadows = uint8_t(strtoul(tag.c_str() + 5, nullptr, 10));
-            } else if (tag == "xr2p") {
-                r.variant.twoPlane = true;
             } else if (tag.rfind("xrs=", 0) == 0) {
                 r.variant.xrSlots = uint16_t(strtoul(tag.c_str() + 4, nullptr, 10));
             } else if (tag.rfind("wtex=", 0) == 0 && !gm20b::parseWritten(tag, r.variant.written)) {
