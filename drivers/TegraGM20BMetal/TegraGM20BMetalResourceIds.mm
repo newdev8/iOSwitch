@@ -73,9 +73,9 @@ void gm20bHeapForgetSampler(SwitchMetalSampler *s)
     const uint64_t word = gm20b::samplerResourceId(_raw.tsc);
     if (word && gRM && !_idNamed.exchange(true, std::memory_order_acq_rel)) {
         MTLSamplerDescriptor *d = _descriptor;
-        const gm20b::SamplerFacts facts = {d.minFilter,     d.magFilter,       d.mipFilter,   d.sAddressMode,
-                                           d.tAddressMode,  d.rAddressMode,    d.borderColor, d.normalizedCoordinates,
-                                           d.maxAnisotropy, d.compareFunction, d.lodAverage,  d.lodMinClamp,
+        const gm20b::SamplerFacts facts = {d.minFilter,       d.magFilter,           d.mipFilter,   d.sAddressMode,
+                                           d.tAddressMode,    d.rAddressMode,        d.borderColor, (uint64_t)d.normalizedCoordinates,
+                                           d.maxAnisotropy,   d.compareFunction,     d.lodAverage != 0, d.lodMinClamp,
                                            d.lodMaxClamp};
         if (!gRM->raw->nameSampler(_raw, gm20b::samplerWord(facts), _normalized))
             heapRefused("sampler");
